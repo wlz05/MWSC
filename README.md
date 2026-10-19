@@ -178,15 +178,20 @@ LSE-C measures the strength of the best offset match. A delayed clip can still h
 
 ## Dataset Preparation
 
-| Dataset | Adapter | Main use |
+| Dataset | Adapter | Task and annotations |
 | --- | --- | --- |
-| FakeAVCeleb | `fakeavceleb` | Audiovisual deepfake detection |
-| LAV-DF | `lavdf` | Local audio/video manipulation |
-| AV-Deepfake1M | `avdeepfake1m` | Large-scale local manipulation |
-| DFDC | `dfdc` | Cross-dataset visual manipulation testing |
-| LRS2 / LRS3 | `lrs2` / `lrs3` | Real speech pairs and controlled offset experiments |
-| VoxCeleb2 | `voxceleb2` | Real speech pairs from an available local copy |
-| Custom CSV | `custom` | Additional datasets and independent synchronization labels |
+| [FakeAVCeleb](https://github.com/DASH-Lab/FakeAVCeleb) | `fakeavceleb` | Real/real, real/fake, fake/real, and fake/fake video-audio combinations for audiovisual deepfake detection |
+| [LAV-DF](https://github.com/ControlNet/LAV-DF) | `lavdf` | Local manipulation detection with fake intervals and audio/video modification flags |
+| [AV-Deepfake1M](https://github.com/ControlNet/AV-Deepfake1M) | `avdeepfake1m` | Audiovisual manipulation detection and localization with modality-specific intervals |
+| [DFDC](https://ai.meta.com/datasets/dfdc/) | `dfdc` | Cross-dataset visual manipulation testing; original-video metadata links derivatives |
+| [LRS2](https://www.robots.ox.ac.uk/~vgg/data/lip_reading/lrs2.html) | `lrs2` | Real speech pairs for encoder training and controlled audio-offset tests |
+| [LRS3](https://arxiv.org/abs/1809.00496) | `lrs3` | TED/TEDx speech pairs for encoder training and cross-domain synchronization tests |
+| [VoxCeleb2](https://www.robots.ox.ac.uk/~vgg/data/voxceleb/vox2.html) | `voxceleb2` | Real audiovisual speaker clips for representation training and identity-based splits |
+| Custom CSV | `custom` | User datasets with authenticity labels, local intervals, and independent synchronization labels |
+
+Encoder training selects real audiovisual pairs from the training split. FakeAVCeleb, LAV-DF, AV-Deepfake1M, and DFDC supply manipulation labels for detection evaluation. LRS2, LRS3, and VoxCeleb2 supply real speech clips for representation training and controlled synchronization tests. Controlled offsets use independently verified synchronized real clips.
+
+The SyncNet scores in the example table use the [official SyncNet demonstration video](https://www.robots.ox.ac.uk/~vgg/software/lipsync/data/example.avi).
 
 Example preparation for FakeAVCeleb:
 
@@ -214,9 +219,21 @@ Synchronization truth is separate from authenticity: `sync_label` is `0 = synchr
 
 ## Training
 
-### Eight RTX 4090 GPUs, Four Seeds
+### Experiment Configuration
 
-The experiment seeds are **42, 52, 3047, 3407**. Keep the data split fixed at seed 42 and vary the training seed.
+Our experiment configuration uses **8 NVIDIA RTX 4090 GPUs** and training seeds **42, 52, 3047, 3407**. The data split uses seed 42.
+
+| Setting | Value |
+| --- | --- |
+| GPUs | 8 × NVIDIA RTX 4090 |
+| Training seeds | 42, 52, 3047, 3407 |
+| Split seed | 42 |
+| Distributed training | One DDP process per GPU, NCCL |
+| Per-GPU batch size | 2 |
+| Global batch size | 16 |
+| Learning rate | 0.0001 |
+| Optimizer | AdamW |
+| Epochs per seed | 20 |
 
 ```bash
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
@@ -280,6 +297,20 @@ The dense variants retain temporal resolution. Start with batch size 1 per devic
 
 ## Evaluation
 
+Detection evaluation reports ROC-AUC, EER, accuracy, precision, recall, and F1. Temporal localization reports window proposal AP at IoU thresholds 0.3, 0.5, and 0.7. Synchronization evaluation reports offset error and synchronization classification separately.
+
+Lip-sync evaluation uses [SyncNet's LSE-C and LSE-D](https://github.com/joonson/syncnet_python), also used in [AVGen-Bench](https://github.com/microsoft/AVGen-Bench). MSSC measures multi-scale audiovisual coherence within MWSC.
+
+| Metric | Task | Direction |
+| --- | --- | --- |
+| ROC-AUC / F1 | Video and window authenticity classification | Higher |
+| EER | Authenticity classification | Lower |
+| Window proposal AP | Temporal manipulation localization | Higher |
+| MSSC | Multi-scale audiovisual coherence | Higher agreement |
+| LSE-C | Lip-sync confidence over candidate offsets | Higher |
+| LSE-D | Minimum audiovisual embedding distance | Lower |
+| Offset MAE | Audio-video delay estimation | Lower |
+
 Calibrate the threshold on real validation videos, then evaluate the test split:
 
 ```bash
@@ -330,7 +361,7 @@ SyncNet results on the official 12.68-second example, using CPU inference:
 | Precropped, one full-video window | 10.0479 | 5.3519 | -120 ms |
 | Automatic Haar crop, first 3 seconds | 7.4379 | 6.2309 | -120 ms |
 
-Cropping and windowing change the scores. The current face pipeline uses Haar or a supplied box rather than the original S3FD pipeline. Dataset-level detection accuracy and eight-GPU throughput require measurements on the training machine.
+Cropping and windowing define the scoring protocol. The face pipeline uses Haar detection, a supplied face box, or a precropped track. Each report records its preprocessing mode and model hash.
 
 ---
 
@@ -342,6 +373,11 @@ Cropping and windowing change the scores. The current face pipeline uses Haar or
 - [FakeAVCeleb](https://github.com/DASH-Lab/FakeAVCeleb)
 - [LAV-DF](https://github.com/ControlNet/LAV-DF)
 - [AV-Deepfake1M](https://github.com/ControlNet/AV-Deepfake1M)
+- [AVGen-Bench](https://github.com/microsoft/AVGen-Bench)
+- [LRS2](https://www.robots.ox.ac.uk/~vgg/data/lip_reading/lrs2.html)
+- [LRS3: a large-scale dataset for visual speech recognition](https://arxiv.org/abs/1809.00496)
+- [VoxCeleb2](https://www.robots.ox.ac.uk/~vgg/data/voxceleb/vox2.html)
+- [DFDC](https://ai.meta.com/datasets/dfdc/)
 
 ## Third-party License
 

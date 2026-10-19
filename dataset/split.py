@@ -21,6 +21,7 @@ class UnionFind:
 def connected_groups(rows):
     links = UnionFind(len(rows))
     owners = {}
+    # Link shared identities and source videos transitively.
     for index, row in enumerate(rows):
         dataset = row["dataset"]
         keys = [("source", row.get("source_namespace") or dataset, row["source"])]
@@ -71,6 +72,7 @@ def grouped_split(rows, ratios=(0.7, 0.15, 0.15), seed=42):
     groups.sort(key=len, reverse=True)
     assigned_groups = np.zeros(3, dtype=int)
     output = [dict(row) for row in rows]
+    # Assign connected groups intact to prevent split leakage.
     for order, group in enumerate(groups):
         histogram = np.zeros(len(strata))
         for index in group:

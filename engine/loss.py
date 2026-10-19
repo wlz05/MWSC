@@ -15,6 +15,7 @@ def temporal_contrastive_loss(video, audio, temperature=0.1, exclusion_frames=4)
     same_clip = positions[:, None] // time == positions[None, :] // time
     adjacent = (positions[:, None] % time - positions[None, :] % time).abs() <= exclusion_frames
     diagonal = torch.eye(batch * time, dtype=torch.bool, device=video.device)
+    # Exclude nearby frames from the negative pairs.
     excluded = same_clip & adjacent & ~diagonal
     logits = logits.masked_fill(excluded, -10000)
     targets = torch.arange(batch * time, device=video.device)

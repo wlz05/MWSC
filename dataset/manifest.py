@@ -79,6 +79,7 @@ def validate_rows(rows, check_files=False, require_split=False):
         if row["duration"] != "" and any(end > row["duration"] + 0.1 for _, end in all_segments):
             raise ValueError("Fake interval exceeds video duration")
         segments = []
+        # Include every annotated modality when deriving window labels.
         for start, end in sorted(all_segments):
             if segments and start <= segments[-1][1]:
                 segments[-1][1] = max(segments[-1][1], end)

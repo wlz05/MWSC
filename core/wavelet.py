@@ -19,6 +19,7 @@ def first_component(features, minimum_variance=1e-12):
         raise InsufficientEvidence("Feature sequence has no temporal variation")
     _, singular, right = np.linalg.svd(centered, full_matrices=False)
     direction = right[0]
+    # Fix the PCA sign for a consistent temporal orientation.
     if direction[np.argmax(np.abs(direction))] < 0:
         direction = -direction
     series = centered @ direction
@@ -74,6 +75,7 @@ def gaussian_weights(frequencies, mean=4.0, std=1.5, mode="patent_raw"):
     if mode == "normalized":
         if not np.isfinite(logweights).any():
             raise ValueError("Gaussian grid has no representable weights")
+        # Shift log weights before exponentiation to avoid underflow.
         weights = np.exp(logweights - np.max(logweights))
         weights = weights / weights.sum()
     elif mode == "patent_raw":

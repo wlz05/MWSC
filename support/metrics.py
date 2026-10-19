@@ -23,6 +23,7 @@ def binary_metrics(labels, fake_scores, predictions):
     if positives and negatives:
         order = np.argsort(-scores, kind="stable")
         ordered_labels, ordered_scores = labels[order], scores[order]
+        # Merge tied scores before constructing the ROC curve.
         endpoints = np.r_[np.flatnonzero(np.diff(ordered_scores)), len(labels) - 1]
         true_positive = np.r_[0, np.cumsum(ordered_labels)[endpoints]] / positives
         false_positive = np.r_[0, (endpoints + 1) - np.cumsum(ordered_labels)[endpoints]] / negatives
@@ -52,6 +53,7 @@ def localization_metrics(predictions, ground_truth, thresholds=(0.3, 0.5, 0.7)):
         true_positive, false_positive = [], []
         for key, start, end, score in ranked:
             intervals = ground_truth.get(key, [])
+            # Match each ground-truth interval at most once.
             candidates = [(interval_iou((start, end), interval), index) for index, interval in enumerate(intervals) if index not in used.get(key, set())]
             best = max(candidates, default=(0.0, -1))
             matched = best[0] >= threshold

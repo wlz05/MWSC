@@ -115,6 +115,7 @@ def train_parallel(rows, config, checkpoint, epochs, batch_size, learning_rate, 
     for epoch in range(start_epoch, start_epoch + epochs):
         train_set.set_epoch(epoch)
         if sampler is not None:
+            # Change the distributed shuffle order for every epoch.
             sampler.set_epoch(epoch)
         loss, epoch_steps = run_epoch(distributed_model, train_loader, target, optimizer, maximum_steps, parallel)
         parallel.synchronize_buffers(model)
@@ -127,6 +128,7 @@ def train_parallel(rows, config, checkpoint, epochs, batch_size, learning_rate, 
         if validation < best_validation:
             best_validation = validation
             if parallel.primary:
+                # Save only the selected checkpoint from rank zero.
                 training = {"seed": seed, "world_size": parallel.world_size, "per_device_batch_size": batch_size, "global_batch_size": batch_size * parallel.world_size, "validation_loss": validation}
                 save_checkpoint(checkpoint, model, config, epoch + 1, steps, optimizer, provenance, training)
         parallel.barrier()

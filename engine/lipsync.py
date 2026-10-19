@@ -21,6 +21,7 @@ def mfcc_features(waveform):
     raw = np.asarray(waveform)
     if raw.ndim != 1 or not len(raw) or not np.issubdtype(raw.dtype, np.number) or np.iscomplexobj(raw) or not np.isfinite(raw).all():
         raise ValueError("MFCC input requires finite real mono audio")
+    # Restore the PCM16 scale expected by the pretrained expert.
     pcm = np.rint(np.clip(raw, -1, 32767 / 32768) * 32768)
     signal = preemphasize(pcm)
     count = max(1, 1 + int(np.ceil((len(signal) - 400) / 160)))
@@ -49,6 +50,7 @@ def profile_summary(curve, vshift, minimum_confidence=3.0, tolerance=0.08):
     distance = float(curve[index])
     confidence = float(np.median(curve) - distance)
     offset = vshift - index
+    # Positive audio lag uses the opposite sign from the official offset.
     audio_lag = -offset / 25
     return {"lse_c": confidence, "lse_d": distance, "zero_offset_distance": float(curve[vshift]), "syncnet_offset_frames": offset, "audio_lag_seconds": audio_lag, "audio_lag_ms": audio_lag * 1000, "sync_decision": "uncertain" if confidence < minimum_confidence else "synchronized" if abs(audio_lag) <= tolerance + 1e-9 else "out_of_sync", "search_boundary_hit": index in (0, 2 * vshift), "distance_curve": curve.tolist()}
 
@@ -162,6 +164,7 @@ class LipSyncScorer:
         report["coverage"] = float(min(1, coverage))
         if tracks:
             count = sum(item["embedding_count"] for item in tracks)
+            # Average distance curves before selecting the video-level offset.
             curve = sum(np.asarray(item["distance_curve"]) * item["embedding_count"] for item in tracks) / count
             report.update(profile_summary(curve, self.vshift, self.minimum_confidence, self.tolerance))
             report["embedding_count"] = count

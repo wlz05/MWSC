@@ -57,6 +57,7 @@ def load_expert(path, device="auto"):
         raise ValueError("SyncNet checkpoint contains nonfinite tensors")
     model = SyncNet()
     expected = model.state_dict()
+    # Legacy checkpoints may omit batch-tracking counters only.
     missing = set(expected) - set(state)
     if set(state) - set(expected) or any(not name.endswith("num_batches_tracked") for name in missing):
         raise ValueError("SyncNet checkpoint keys do not match the v2 expert")
