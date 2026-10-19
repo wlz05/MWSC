@@ -63,6 +63,7 @@ class ParallelContext:
         return Subset(dataset, list(range(self.rank, len(dataset), self.world_size))) if self.world_size > 1 else dataset
 
     def weighted_mean(self, total, count):
+        # Reduce loss sums and sample counts across ranks.
         values = torch.tensor([total, count], dtype=torch.float64, device=self.device)
         if self.world_size > 1:
             dist.all_reduce(values, op=dist.ReduceOp.SUM)

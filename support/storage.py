@@ -33,6 +33,7 @@ def atomic_json(path, payload):
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             json.dump(payload, stream, indent=2, allow_nan=False)
             stream.write("\n")
+        # Replace the target only after serialization succeeds.
         os.replace(name, target)
     finally:
         if os.path.exists(name):

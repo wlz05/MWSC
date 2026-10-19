@@ -43,6 +43,7 @@ def download_asset(name, destination, validator=None):
                 raise ValueError("Official SyncNet download failed: " + str(error)) from error
         if size < 1024:
             raise ValueError("Downloaded asset is incomplete")
+        # Validate the completed transfer before publishing the file.
         if validator is not None:
             validator(os.path.relpath(temporary))
         if target.exists():

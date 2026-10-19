@@ -37,6 +37,7 @@ def save_checkpoint(path, model, config, epoch, training_steps, optimizer=None, 
 
 def read_checkpoint(path):
     try:
+        # Restrict loading to tensor-safe checkpoint contents.
         payload = torch.load(relative_path(path, True), map_location="cpu", weights_only=True)
     except (pickle.UnpicklingError, EOFError, RuntimeError) as error:
         raise ValueError("Checkpoint cannot be decoded as safe tensor data") from error

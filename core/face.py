@@ -27,6 +27,7 @@ def color_frames(path, start, duration, origin=None):
                     if timestamp >= begin + duration - 1e-8:
                         break
                     if timestamp >= begin - 1e-8:
+                        # Preserve PTS unless the external audio defines a new origin.
                         yield frame.to_ndarray(format="bgr24"), timestamp if origin is None else timestamp - native_origin + origin
         except av.FFmpegError as error:
             raise ValueError("PyAV could not decode the color stream") from error
@@ -68,6 +69,7 @@ def crop_face(frame, box):
     border = int(np.ceil(1.8 * size)) + 2
     padded = np.pad(frame, ((border, border), (border, border), (0, 0)), constant_values=110)
     x, y = center_x + border, center_y + border
+    # Extend the crop downward to retain mouth context.
     face = padded[int(y - size):int(y + 1.8 * size), int(x - 1.4 * size):int(x + 1.4 * size)]
     if min(face.shape[:2]) < 1:
         raise ValueError("Face crop is empty")

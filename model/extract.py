@@ -27,6 +27,7 @@ def prepare_inputs(clip, config):
     end = clip.video_times[-1]
     count = int(np.floor((end - clip.video_times[0]) / step + 1e-6)) + 1
     grid = clip.video_times[0] + np.arange(count) * step
+    # Select observed frames without synthesizing missing video content.
     right = np.searchsorted(clip.video_times, grid).clip(0, len(clip.frames) - 1)
     left = np.maximum(right - 1, 0)
     closest = np.where(np.abs(clip.video_times[left] - grid) <= np.abs(clip.video_times[right] - grid), left, right)

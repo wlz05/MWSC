@@ -15,6 +15,7 @@ def mono_resample(waveform, source_rate, target_rate):
     if np.issubdtype(values.dtype, np.integer):
         info = np.iinfo(values.dtype)
         if info.min == 0:
+            # Center unsigned PCM before scaling its amplitude.
             values = (values.astype(np.float64) - (info.max + 1) / 2) / ((info.max + 1) / 2)
         else:
             values = values.astype(np.float64) / max(abs(info.min), abs(info.max))
@@ -46,6 +47,7 @@ def stft_features(waveform, config):
     if len(values) < length:
         raise ValueError("Audio is shorter than one analysis frame")
     frames = np.lib.stride_tricks.sliding_window_view(values, length)[::hop]
+    # Use a periodic Hann window for the short-time spectrum.
     window = np.hanning(length + 1)[:-1]
     spectrum = np.fft.rfft(frames * window, n=config.n_fft, axis=1)
     power = (np.abs(spectrum) ** 2) / max(float(np.sum(window ** 2)), 1e-12)

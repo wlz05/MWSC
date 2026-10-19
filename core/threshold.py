@@ -24,6 +24,7 @@ class DynamicThreshold:
         fake = score < before
         next_history = None
         if update and not fake:
+            # Only accepted real scores enter the adaptive history.
             next_history = [*self.history, score][-self.config.history_size:]
             values = np.asarray(next_history, dtype=np.float64)
             scale = max(float(values.max()), 1.0)

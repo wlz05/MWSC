@@ -48,6 +48,7 @@ class RealSegmentDataset(Dataset):
         return {"video": video[0], "audio": audio[0], "video_times": torch.tensor(vt - start_time, dtype=torch.float32), "audio_times": torch.tensor(at - start_time, dtype=torch.float32), "grid": torch.tensor(grid - start_time, dtype=torch.float32), "source": row["source"]}
 
 def collate_segments(samples):
+    # Keep original timestamps to trim padded features after encoding.
     video_length = max(sample["video"].shape[1] for sample in samples)
     audio_length = max(sample["audio"].shape[-1] for sample in samples)
     video = torch.stack([F.pad(sample["video"], (0, 0, 0, 0, 0, video_length - sample["video"].shape[1]), mode="replicate") for sample in samples])

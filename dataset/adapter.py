@@ -13,6 +13,7 @@ def identity_from_path(value):
 
 def joined_path(root, value):
     child = relative_path(str(value).replace("\\", "/"))
+    # Keep metadata entries inside the selected dataset root.
     if ".." in child.parts:
         raise ValueError("Dataset metadata path cannot escape its root")
     return str(relative_path(root) / child).replace("\\", "/")

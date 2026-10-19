@@ -23,6 +23,7 @@ def evaluate_row(detector, row, adaptive=False):
     count = int(np.floor((duration - config.segment_seconds) / step + 1e-8)) + 1
     if count < 1:
         return {"video": row["video"], "decision": "insufficient_evidence", "reason": "Video is shorter than one segment", "segments": []}
+    # Reset adaptive history before evaluating each video.
     detector.threshold = DynamicThreshold(config, row["video"], detector.model_id)
     segments = []
     for index in range(count):
@@ -67,6 +68,7 @@ def evaluate(rows, checkpoint, split="test", device="auto", config_override=None
         truth[row["video"]] = parse_segments(row["fake_segments"])
         if prediction["decision"] in ("real", "fake"):
             labels.append(row["label"])
+            # Higher ROC scores must indicate stronger evidence of forgery.
             scores.append(-prediction["minimum_sync_score"])
             decisions.append(int(prediction["decision"] == "fake"))
             group = categories.setdefault(row["category"] or "unspecified", {"total": 0, "correct": 0})
@@ -89,6 +91,7 @@ def calibrate(rows, checkpoint, false_positive_rate=0.05, device="auto", output=
     if not 0 <= false_positive_rate < 1:
         raise ValueError("False positive rate must lie in [0, 1)")
     audit_splits(rows)
+    # Calibrate the threshold from held-out real videos only.
     real_validation = select_rows(rows, "val", real_only=True)
     detector = Detector(checkpoint, device)
     scores, failures = [], []
