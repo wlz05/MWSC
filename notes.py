@@ -95,6 +95,7 @@ WORKFLOW = (
     "python -B main.py audit --manifest manifests/fakeavceleb_split.csv --check-files",
     "python -B main.py audit --manifest manifests/fakeavceleb_split.csv --decode --limit 20",
     "python -B main.py train --manifest manifests/fakeavceleb_split.csv --checkpoint weights/encoders.pt --epochs 20 --batch-size 2 --device auto",
+    "python -B run.py --manifest manifests/fakeavceleb_split.csv --devices 8 --seeds 42 52 3047 3407 --epochs 20 --batch-size 2 --workers 2",
     "python -B main.py calibrate --manifest manifests/fakeavceleb_split.csv --checkpoint weights/encoders.pt --output runs/calibration.json",
     "python -B main.py evaluate --manifest manifests/fakeavceleb_split.csv --checkpoint weights/encoders.pt --config runs/calibration.json --split test --output runs/test.json",
     "python -B main.py sync --manifest manifests/speech_split.csv --checkpoint weights/encoders.pt --offsets -0.3 0 0.3 --split test --output runs/sync.json",
@@ -104,24 +105,25 @@ WORKFLOW = (
     "python -B main.py predict --video data/example.mp4 --audio data/example.wav --checkpoint weights/encoders.pt --no-update",
     "python -B main.py extract --video data/example.mp4 --checkpoint weights/encoders.pt --duration 2 --output runs/features.npz",
     "python -B main.py score --features runs/features.npz",
+    "python -B main.py fetch --example-output ../runtime/mwsc/example.avi",
+    "python -B main.py lipsync --video ../runtime/mwsc/example.avi --face-cropped --output ../runtime/mwsc/example.json",
+    "python -B main.py predict --video data/example.mp4 --checkpoint weights/encoders.pt --no-update --lipsync --output ../runtime/mwsc/prediction.json",
     "python -B main.py export --checkpoint weights/encoders.pt --video-output weights/video.ts --audio-output weights/audio.ts",
     "python -B main.py demo",
     "python -B main.py test",
     "python -B check.py",
-    "MWSC.md is the requested documentation exception; all delivered source files are Python.",
-    "Training and explicit output commands create runtime data later; run format checks on clean source trees.",
 )
 HARDWARE = (
-    "CPU inference is supported for experiments and tests; throughput depends on encoder architecture.",
-    "Compact CNN training at 224 pixels can start on an NVIDIA GPU with 12 GB VRAM and batch size 1 or 2.",
-    "Dense I3D training can need 24 GB or more VRAM; start at batch size 1 and measure actual peak memory.",
-    "These memory figures are planning estimates, not measurements on this host.",
-    "Use at least 16 GB host RAM for compact experiments and 32 GB or more for large media collections.",
-    "Disk requirements are dominated by the selected dataset; measure the authorized download before allocation.",
-    "The source code does not download datasets, weights, or GPU software automatically.",
+    "Experiment configuration: 8 NVIDIA RTX 4090 GPUs with 24 GB VRAM per device.",
+    "Training seeds: 42, 52, 3047, 3407; data split seed: 42.",
+    "Each seed uses eight DDP processes with NCCL on Linux, one process per GPU; seeds run sequentially.",
+    "The launcher defaults to batch size 2 and 2 loading workers per GPU, giving global batch size 16.",
+    "The launcher uses AdamW at learning rate 0.0001 for 20 epochs per seed.",
+    "Seed checkpoints are stored separately under ../runtime/mwsc/experiments/seedN/encoders.pt.",
+    "SyncNet inference supports CPU and CUDA; fetch downloads and validates its official pretrained model.",
 )
-INTERFACES = {"deepfake_datasets": "dataset/adapter.py", "speech_datasets": "dataset/speech.py", "manifest_schema": "dataset/manifest.py", "split_and_leakage_audit": "dataset/split.py", "synchronization_offsets": "engine/sync.py", "offline_detection": "engine/detect.py", "packet_streaming": "engine/stream.py", "evaluation": "engine/evaluate.py", "format_rules": "check.py"}
-READINESS = {"implemented": ["Dense feature encoders and local pretraining", "Patent PCA/Morlet/coherence/EMA pipeline", "Bounded-window long-video inference", "Deepfake and speech dataset imports", "Media availability and source leakage audits", "Separate synchronization labels and controlled content shifts", "Offset-error and classification metrics"], "external_requirements": ["Authorized real dataset files", "Trained encoder weights", "PyAV or ffmpeg/ffprobe for embedded container audio", "Held-out calibration and real-data benchmark results"], "research_limits": ["Offset correlation is an additional diagnostic and not the patent coherence equation", "Official temporal-localization leaderboard evaluation requires its own prescribed protocol", "The patent's original weights, dataset, and reported AUC are unavailable for exact reproduction"]}
+INTERFACES = {"deepfake_datasets": "dataset/adapter.py", "speech_datasets": "dataset/speech.py", "manifest_schema": "dataset/manifest.py", "split_and_leakage_audit": "dataset/split.py", "synchronization_offsets": "engine/sync.py", "lip_sync_scores": "engine/lipsync.py", "pretrained_syncnet": "model/expert.py", "official_model_download": "support/download.py", "distributed_training": "engine/parallel.py", "four_seed_launcher": "run.py", "offline_detection": "engine/detect.py", "packet_streaming": "engine/stream.py", "evaluation": "engine/evaluate.py", "format_rules": "check.py"}
+READINESS = {"implemented": ["Dense feature encoders and local pretraining", "Patent PCA/Morlet/coherence/EMA pipeline", "Bounded-window long-video inference", "Deepfake and speech dataset imports", "Media availability and source leakage audits", "Separate synchronization labels and controlled content shifts", "Offset-error and classification metrics", "Official pretrained SyncNet inference with LSE-C, LSE-D, and audio lag", "SyncNet score attachment to MWSC video reports", "Eight-GPU DDP training and four-seed launch commands"], "external_requirements": ["Authorized real dataset files", "Trained MWSC encoder weights", "PyAV or ffmpeg/ffprobe for embedded container audio", "Held-out calibration and real-data benchmark results"], "research_limits": ["Offset correlation is an additional diagnostic and not the patent coherence equation", "Official temporal-localization leaderboard evaluation requires its own prescribed protocol", "The patent's original weights, dataset, and reported AUC are unavailable for exact reproduction"]}
 
 def report():
     return {"project": PROJECT, "patent": PATENT, "formulas": FORMULAS, "claim_mapping": PATENT_MAPPING, "implementation_choices": IMPLEMENTATION_CHOICES, "limitations": LIMITATIONS, "workflow": WORKFLOW, "hardware": HARDWARE, "interfaces": INTERFACES, "readiness": READINESS}
