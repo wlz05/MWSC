@@ -201,6 +201,22 @@ python -B main.py split --manifest ../runtime/mwsc/imported.csv --output ../runt
 python -B main.py audit --manifest ../runtime/mwsc/split.csv --check-files --decode
 ```
 
+### Other Dataset Imports
+
+```bash
+python -B main.py import --dataset lavdf --root ../datasets/lavdf --metadata ../datasets/lavdf/metadata.min.json --output ../runtime/mwsc/lavdf.csv
+python -B main.py import --dataset avdeepfake1m --root ../datasets/avdeepfake1m --metadata ../datasets/avdeepfake1m/train_metadata.json ../datasets/avdeepfake1m/val_metadata.json --output ../runtime/mwsc/avdeepfake1m.csv
+python -B main.py import --dataset dfdc --root ../datasets/dfdc/parta --metadata ../datasets/dfdc/parta/metadata.json --output ../runtime/mwsc/dfdc.csv
+python -B main.py import --dataset lrs2 --root ../datasets/lrs2/main --filelist ../datasets/lrs2/train.txt --subset train --output ../runtime/mwsc/lrs2_train.csv
+python -B main.py import --dataset lrs3 --root ../datasets/lrs3/trainval --subset train --output ../runtime/mwsc/lrs3_train.csv
+python -B main.py import --dataset voxceleb2 --root ../datasets/voxceleb2 --output ../runtime/mwsc/voxceleb2.csv
+python -B main.py import --dataset custom --metadata ../datasets/custom/manifest.csv --output ../runtime/mwsc/custom.csv
+```
+
+Metadata paths refer to local dataset files. Speech file-list entries are relative to `--root`; `--audio-root` pairs video entries with WAV files in a parallel directory. Import each speech subset separately with its `--subset`, then merge the CSV files through `--dataset custom --metadata`.
+
+Use `split --keep-official` for a complete, labeled official partition and `split --seed 42` for a grouped research split. Both routes audit identity and source leakage. Use `--identity-map` with a `source,group` CSV when subject IDs are stored separately.
+
 ### Manifest Format
 
 ```csv
