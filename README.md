@@ -123,6 +123,8 @@ python -B main.py fetch --example-output ../runtime/mwsc/example.avi
 
 The official model is downloaded from Oxford and saved to `../runtime/mwsc/syncnet.model`. Downloads are validated before replacing the temporary file. An alternative local model can be supplied with `--syncnet-weights`.
 
+Keep the relative `../runtime/mwsc` directory with the project when moving the workspace. Model files, feature archives, and experiment outputs use the supplied relative paths.
+
 ### MWSC Encoders
 
 Train the encoders on real audiovisual pairs before running MWSC detection. The SyncNet checkpoint and the MWSC checkpoint serve different networks. Optional I3D/VGGish backbone checkpoints must match the dense architecture's expected tensor names and shapes.

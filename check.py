@@ -12,6 +12,20 @@ HEADER = "# -*- coding: utf-8 -*-"
 TITLE = "# MWSC: Multi-scale Wavelet Synchronization Coherence and Deep Learning for Deepfake Detection"
 FOOTER = ("# Author: Weiliang Zhu", "# Email: wlzchina05@gmail.com")
 
+def inspect_document(path):
+    text = path.read_text(encoding='utf-8')
+    errors = []
+    if re.search(r'[\u3400-\u9fff]', text):
+        errors.append(str(path) + ': documentation must use English')
+    if sum(line.startswith('```') for line in text.splitlines()) % 2:
+        errors.append(str(path) + ': unclosed Markdown fence')
+    for number, line in enumerate(text.splitlines(), 1):
+        if line != line.rstrip():
+            errors.append(str(path) + ':%d: trailing whitespace' % number)
+        if re.search(r'(?<![A-Za-z0-9])(?:[A-Za-z]:[\\/]|/(?:home|Users|root)/)', line):
+            errors.append(str(path) + ':%d: use relative local paths' % number)
+    return errors
+
 def inspect_source(root="."):
     base = Path(root)
     files = sorted(path for path in base.rglob("*") if path.is_file() and ".git" not in path.relative_to(base).parts)
@@ -21,6 +35,7 @@ def inspect_source(root="."):
     for path in files:
         if path in (base / "MWSC.md", base / "README.md"):
             documents.append(path.name)
+            errors.extend(inspect_document(path))
             continue
         if path.suffix != ".py":
             errors.append(str(path) + ": non-Python file")
