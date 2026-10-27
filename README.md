@@ -402,6 +402,7 @@ MSSC uses the raw Gaussian weights by default. Their sum is approximately 1.121,
 
 ```bash
 python -B main.py test
+python -B check.py
 python -B main.py demo
 ```
 
