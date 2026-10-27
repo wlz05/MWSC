@@ -124,6 +124,7 @@ def parser_for_commands():
     splitter.add_argument("--ratios", nargs=3, type=float, default=(0.7, 0.15, 0.15))
     splitter.add_argument("--identity-map")
     splitter.add_argument("--keep-official", action="store_true")
+    splitter.add_argument("--regroup", action="store_true")
     auditor = commands.add_parser("audit", help="Check labels, files, groups, and leakage")
     auditor.add_argument("--manifest", required=True)
     auditor.add_argument("--check-files", action="store_true")
@@ -246,7 +247,7 @@ def run(args):
         return demo()
     if args.command == "test":
         import unittest
-        modules = ("verify.partition", "verify.system", "verify.formula", "verify.accuracy", "verify.process", "verify.regression", "verify.expert", "verify.parallel", "verify.format")
+        modules = ("verify.partition", "verify.system", "verify.formula", "verify.accuracy", "verify.process", "verify.regression", "verify.expert", "verify.parallel", "verify.protocol", "verify.format")
         suite = unittest.defaultTestLoader.loadTestsFromNames(modules)
         result = unittest.TextTestRunner(verbosity=2).run(suite)
         if not result.wasSuccessful():
@@ -278,14 +279,13 @@ def run(args):
         return {"output": args.output, **summary(rows)}
     if args.command in ("split", "audit"):
         from dataset.manifest import read_manifest, save_manifest
-        from dataset.split import grouped_split, audit_splits
+        from dataset.split import prepare_splits, audit_splits
         rows = read_manifest(args.manifest, getattr(args, "check_files", False))
         if args.command == "split":
             if args.identity_map:
                 from dataset.adapter import apply_identity_map
                 rows = apply_identity_map(rows, args.identity_map)
-            if not args.keep_official:
-                rows = grouped_split(rows, args.ratios, args.seed)
+            rows = prepare_splits(rows, args.ratios, args.seed, args.keep_official, args.regroup)
             result = audit_splits(rows)
             save_manifest(args.output, rows)
             return {"output": args.output, **result}
@@ -319,6 +319,9 @@ def run(args):
             from engine.detect import checkpoint_identity
             if expected_id != checkpoint_identity(args.checkpoint):
                 raise ValueError("Calibration belongs to a different checkpoint")
+        if args.config and expected_id is not None:
+            from dataset.provenance import verify_calibration
+            verify_calibration(rows, read_json(args.config).get('validation_rows'), args.split)
         if args.command == "sync":
             from engine.sync import evaluate_sync
             return evaluate_sync(rows, args.checkpoint, args.split, args.device, config, args.offsets, args.tolerance, args.maximum_offset, args.limit, args.output)

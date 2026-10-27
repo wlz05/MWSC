@@ -193,11 +193,11 @@ Encoder training selects real audiovisual pairs from the training split. FakeAVC
 
 The SyncNet scores in the example table use the [official SyncNet demonstration video](https://www.robots.ox.ac.uk/~vgg/software/lipsync/data/example.avi).
 
-Example preparation for FakeAVCeleb:
+Example preparation using the released LAV-DF partition:
 
 ```bash
-python -B main.py import --dataset fakeavceleb --root ../datasets/fakeavceleb --output ../runtime/mwsc/imported.csv
-python -B main.py split --manifest ../runtime/mwsc/imported.csv --output ../runtime/mwsc/split.csv --seed 42
+python -B main.py import --dataset lavdf --root ../datasets/lavdf --metadata ../datasets/lavdf/metadata.min.json --output ../runtime/mwsc/imported.csv
+python -B main.py split --manifest ../runtime/mwsc/imported.csv --output ../runtime/mwsc/split.csv --keep-official
 python -B main.py audit --manifest ../runtime/mwsc/split.csv --check-files --decode
 ```
 
@@ -215,7 +215,29 @@ python -B main.py import --dataset custom --metadata ../datasets/custom/manifest
 
 Metadata paths refer to local dataset files. Speech file-list entries are relative to `--root`; `--audio-root` pairs video entries with WAV files in a parallel directory. Import each speech subset separately with its `--subset`, then merge the CSV files through `--dataset custom --metadata`.
 
-Use `split --keep-official` for a complete, labeled official partition and `split --seed 42` for a grouped research split. Both routes audit identity and source leakage. Use `--identity-map` with a `source,group` CSV when subject IDs are stored separately.
+Supplied split labels are preserved by default. `--keep-official` explicitly selects this behavior; `--regroup` requests a custom grouped partition. Use `--identity-map` with a `source,group` CSV when subject IDs are stored separately. For joint experiments over related datasets, map original speaker IDs into one `--identity-namespace` and original video IDs into one `--source-namespace`.
+
+### 1. Data Partitions
+
+| Dataset | Partition protocol | Source |
+| --- | --- | --- |
+| LAV-DF | Preserve every `split` value in `metadata.min.json`; map the released `dev` name to `val` | [Official data preparation](https://github.com/ControlNet/LAV-DF#data-preparation) |
+| AV-Deepfake1M | Preserve `train_metadata.json`, `val_metadata.json`, and the separate `test_files.txt` list; media reside under their subset directory | [Official SDK loader](https://github.com/ControlNet/AV-Deepfake1M/blob/master/python/avdeepfake1m/loader.py) |
+| LRS2 | Import `train.txt`, `val.txt`, and `test.txt` separately; retain the broadcast-date partition | [Official LRS2 release](https://www.robots.ox.ac.uk/~vgg/data/lip_reading/lrs2.html) |
+| LRS3 | Retain the released `pretrain`, `trainval`, and `test` subsets; training/validation selection follows the chosen experiment's supplied manifest | [LRS3 paper](https://arxiv.org/abs/1809.00496) |
+| VoxCeleb2 | Retain the released development/test roles; supply the experiment's development training/validation manifest | [Official release](https://www.robots.ox.ac.uk/~vgg/data/voxceleb/vox2.html) |
+| FakeAVCeleb | Preserve the evaluation metadata and category selection used by the baseline; for the AVH-Align comparison, use its real AV-Deepfake1M training/validation data and evaluate FakeAVCeleb as the external benchmark | [AVH-Align protocol](https://github.com/bit-ml/AVH-Align#data) |
+| DFDC | Retain the selected benchmark's supplied subsets and original-video links | [Dataset release](https://ai.meta.com/datasets/dfdc/) |
+
+The main workflow above uses LAV-DF's released three-way partition. AV-Deepfake1M imports its public training/validation annotations directly. Its held-out test videos follow `test_files.txt`; generate predictions with the selected checkpoint and submit them through the [official evaluation protocol](https://github.com/ControlNet/AV-Deepfake1M#sdk). Local validation reports retain the `val` name.
+
+For a baseline-provided CSV, preserve its assignments when converting columns to the manifest format below and import it with `--dataset custom`. Set its `dataset` field to the benchmark name and retain original person/video IDs. The real-only training and validation-loss selection stages follow the roles used in [AVH-Align's training code](https://github.com/bit-ml/AVH-Align/blob/main/train.py); MWSC supplies its own encoders and temporal contrastive objective.
+
+### 2. Decoding and Feature Caches
+
+Prepare the manifest first. During training, decode the selected clip, convert audio to mono 16 kHz, and prepare video/audio tensors on demand. Duration caching is local to each dataset object. Training generates crops from training rows; validation uses deterministic center crops. Fixed decoder settings and normalization are shared across subsets.
+
+For repeated inference, `main.py extract` stores one video's features in a separate NPZ archive with timestamps, preprocessing configuration, and checkpoint hash. Create feature archives with the selected checkpoint and keep train/validation/test outputs in separate directories. `main.py score` reads the archive's recorded configuration and model identity.
 
 ### Manifest Format
 
@@ -235,15 +257,19 @@ Synchronization truth is separate from authenticity: `sync_label` is `0 = synchr
 
 ## Training
 
+### 3. Training Samples
+
+Select real audiovisual pairs from `train`. Each epoch changes the training crop and shuffle order using the training seed. Temporally matching video/audio embeddings form positive pairs; other eligible temporal positions form the rank-local contrastive negatives. Validation draws real pairs from `val` with fixed crops and disabled gradients. All four training seeds use the same manifest.
+
 ### Experiment Configuration
 
-Our experiment configuration uses **8 NVIDIA RTX 4090 GPUs** and training seeds **42, 52, 3047, 3407**. The data split uses seed 42.
+Our experiment configuration uses **8 NVIDIA RTX 4090 GPUs** and training seeds **42, 52, 3047, 3407**. Released partitions stay fixed across all four runs. Custom grouped experiments use split seed 42.
 
 | Setting | Value |
 | --- | --- |
 | GPUs | 8 × NVIDIA RTX 4090 |
 | Training seeds | 42, 52, 3047, 3407 |
-| Split seed | 42 |
+| Partition | Released metadata; seed 42 for custom grouped experiments |
 | Distributed training | One DDP process per GPU, NCCL |
 | Per-GPU batch size | 2 |
 | Global batch size | 16 |
@@ -294,6 +320,12 @@ python -B run.py --manifest ../runtime/mwsc/split.csv --devices 8 --architecture
 
 The dense variants retain temporal resolution. Start with batch size 1 per device and measure memory use before increasing it. Resume a trained MWSC checkpoint through `main.py train --resume`.
 
+### 4. Validation and Model Selection
+
+After each training epoch, compute validation contrastive loss in evaluation mode. Average loss by the number of examples and save the checkpoint with the lowest validation loss. DDP validation shards cover each validation example once. Checkpoints record the training/validation annotations, partition signature, seed, optimizer, and selected validation loss. Resume uses those same annotations and carries forward the selected loss and weights.
+
+The [AVH-Align training loop](https://github.com/bit-ml/AVH-Align/blob/main/train.py) likewise separates optimization and validation and selects by validation loss. For a cross-dataset comparison, train and select on the source benchmark, then retain the target benchmark's evaluation membership.
+
 ### Arguments
 
 | Argument | Default | Description |
@@ -312,6 +344,10 @@ The dense variants retain temporal resolution. Start with batch size 1 per devic
 ---
 
 ## Evaluation
+
+### 5. Threshold Calibration and Final Test
+
+Load the selected checkpoint. Compute the operating threshold from real `val` videos and save the validation annotations, model hash, and scoring configuration with the calibration result. Freeze the model and threshold, reset history for each video, and evaluate the complete `test` subset. Training and validation memberships recorded in the checkpoint accompany this final evaluation. Run the same calibration/testing sequence separately for all four seeds.
 
 Detection evaluation reports ROC-AUC, EER, accuracy, precision, recall, and F1. Temporal localization reports window proposal AP at IoU thresholds 0.3, 0.5, and 0.7. Synchronization evaluation reports offset error and synchronization classification separately.
 
@@ -369,8 +405,6 @@ python -B main.py demo
 
 The tests cover signal equations, dataset splits, training/inference, synchronization offsets, pretrained model compatibility, and distributed data sharding.
 
-Direct evaluation, calibration, synchronization testing, and training protect input media and model files from output-path collisions, including hard-link aliases. Invalid launcher parameters are rejected before distributed workers start. PCA decomposition failures and numeric overflow produce an insufficient-evidence result, while nonfinite model weights are rejected before checkpoint replacement.
-
 SyncNet results on the official 12.68-second example, using CPU inference:
 
 | Preprocessing | LSE-C | LSE-D | Audio lag |
@@ -391,6 +425,7 @@ Cropping and windowing define the scoring protocol. The face pipeline uses Haar 
 - [FakeAVCeleb](https://github.com/DASH-Lab/FakeAVCeleb)
 - [LAV-DF](https://github.com/ControlNet/LAV-DF)
 - [AV-Deepfake1M](https://github.com/ControlNet/AV-Deepfake1M)
+- [AVH-Align](https://github.com/bit-ml/AVH-Align)
 - [AVGen-Bench](https://github.com/microsoft/AVGen-Bench)
 - [LRS2](https://www.robots.ox.ac.uk/~vgg/data/lip_reading/lrs2.html)
 - [LRS3: a large-scale dataset for visual speech recognition](https://arxiv.org/abs/1809.00496)

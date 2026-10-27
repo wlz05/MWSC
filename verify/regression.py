@@ -20,6 +20,7 @@ from engine.stream import StreamSession
 from core.threshold import DynamicThreshold
 from core.audio import mono_resample
 from dataset.split import connected_groups
+from dataset.provenance import partitions, signature
 from engine.evaluate import evaluate_row, evaluate, calibrate
 from engine.detect import Detector
 from support.storage import atomic_json, relative_path, read_csv, write_csv, numpy_save
@@ -33,6 +34,10 @@ from engine.train import train
 from dataset.adapter import import_avdeepfake
 from verify.fixture import TemporaryWorkspace, synthetic_media
 from core.wavelet import InsufficientEvidence, gaussian_weights, first_component
+
+def checkpoint_metadata():
+    rows = validate_rows([{'dataset': 'reference', 'video': 'reference/' + split + '.mp4', 'label': 0, 'group': split, 'source': split, 'split': split} for split in ('train', 'val')])
+    return {'training': {'partitions': partitions(rows), 'partition_signature': signature(rows)}}
 
 class ConfigurationTests(unittest.TestCase):
     def test_fractional_integer_and_boolean_parameters_are_rejected(self):
@@ -171,7 +176,7 @@ class BoundaryTests(unittest.TestCase):
         def measurement(*args):
             return {"estimated_offset_seconds": 0, "predicted_sync_label": 0, "synchronization_score": 0.9, "patent_decision": "real"}
         for offsets in (np.asarray([0, 0.1]), (value for value in (0, 0.1))):
-            with patch("engine.sync.Detector", return_value=SimpleNamespace(config=Config())), patch("engine.sync.read_media", return_value=clip), patch("engine.sync.shifted_clip", return_value=clip), patch("engine.sync.sync_measurement", side_effect=measurement):
+            with patch("engine.sync.Detector", return_value=SimpleNamespace(config=Config(), metadata=checkpoint_metadata())), patch("engine.sync.read_media", return_value=clip), patch("engine.sync.shifted_clip", return_value=clip), patch("engine.sync.sync_measurement", side_effect=measurement):
                 result = evaluate_sync(rows, "weights/model.pt", offsets=offsets)
             self.assertEqual(result["controlled_offsets_seconds"], [0.0, 0.1])
             self.assertEqual(result["attempted_pairs"], 2)
@@ -429,7 +434,7 @@ class BoundaryTests(unittest.TestCase):
 
     def test_unknown_sync_baseline_counts_every_requested_offset(self):
         rows = validate_rows([self.row()])
-        with patch("engine.sync.Detector", return_value=SimpleNamespace(config=Config())):
+        with patch("engine.sync.Detector", return_value=SimpleNamespace(config=Config(), metadata=checkpoint_metadata())):
             report = evaluate_sync(rows, "weights/model.pt", offsets=[-0.3, 0, 0.3])
         self.assertEqual(report["attempted_pairs"], 3)
         self.assertEqual(report["scored_pairs"], 0)
@@ -438,7 +443,7 @@ class BoundaryTests(unittest.TestCase):
         rows = validate_rows([self.row(sync_label=0)])
         clip = MediaClip(np.zeros((60, 32, 32), dtype=np.uint8), np.arange(60) / 30, np.ones(32000), 0, 16000, [])
         measurement = {"estimated_offset_seconds": 0, "predicted_sync_label": 0, "synchronization_score": 0.9, "patent_decision": "real"}
-        with patch("engine.sync.Detector", return_value=SimpleNamespace(config=Config())), patch("engine.sync.read_media", return_value=clip), patch("engine.sync.sync_measurement", side_effect=lambda *args: dict(measurement)):
+        with patch("engine.sync.Detector", return_value=SimpleNamespace(config=Config(), metadata=checkpoint_metadata())), patch("engine.sync.read_media", return_value=clip), patch("engine.sync.sync_measurement", side_effect=lambda *args: dict(measurement)):
             report = evaluate_sync(rows, "weights/model.pt", offsets=[0, 0.03, 0.3])
         self.assertEqual(report["offset_metrics"]["annotated_pairs"], 0)
         self.assertIsNone(report["offset_metrics"]["mean_absolute_error_seconds"])

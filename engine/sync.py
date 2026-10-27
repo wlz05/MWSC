@@ -9,6 +9,7 @@ from dataset.manifest import select_rows
 from core.media import MediaClip, read_media
 from support.metrics import binary_metrics
 from dataset.split import audit_splits
+from dataset.provenance import verify_holdout
 from support.storage import atomic_json, protect_output
 from core.wavelet import first_component, InsufficientEvidence
 
@@ -100,6 +101,7 @@ def evaluate_sync(rows, checkpoint, split="test", device="auto", config_override
             raise ValueError("Synchronization evaluation limit must be positive")
         selected = selected[:limit]
     detector = Detector(checkpoint, device, config_override=config_override)
+    verify_holdout(rows, detector.metadata, split)
     outcomes = []
     labels, scores, decisions, patent_scores, patent_decisions, errors = [], [], [], [], [], []
     for row in selected:

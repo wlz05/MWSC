@@ -10,6 +10,7 @@ from engine.detect import Detector
 from core.threshold import DynamicThreshold
 from dataset.manifest import select_rows, parse_segments, window_label
 from dataset.split import audit_splits
+from dataset.provenance import verify_holdout
 from support.metrics import binary_metrics, localization_metrics
 
 def evaluate_row(detector, row, adaptive=False):
@@ -63,6 +64,7 @@ def evaluate(rows, checkpoint, split="test", device="auto", config_override=None
             raise ValueError("Evaluation limit must be positive")
         selected = selected[:limit]
     detector = Detector(checkpoint, device, config_override=config_override)
+    verify_holdout(rows, detector.metadata, split)
     predictions = [evaluate_row(detector, row, adaptive) for row in selected]
     labels, scores, decisions = [], [], []
     window_labels, window_scores, window_predictions = [], [], []
@@ -100,6 +102,7 @@ def calibrate(rows, checkpoint, false_positive_rate=0.05, device="auto", output=
     # Calibrate the threshold from held-out real videos only.
     real_validation = select_rows(rows, "val", real_only=True)
     detector = Detector(checkpoint, device)
+    verify_holdout(rows, detector.metadata, "val")
     scores, failures = [], []
     for row in real_validation:
         prediction = evaluate_row(detector, row, False)
@@ -112,7 +115,7 @@ def calibrate(rows, checkpoint, false_positive_rate=0.05, device="auto", output=
     threshold = float(np.quantile(scores, false_positive_rate, method="lower"))
     values = detector.config.to_dict()
     values["threshold"] = threshold
-    result = {"config": values, "model_id": detector.model_id, "method": "lower_quantile_of_real_validation_video_minimum_scores", "validation_scores": scores, "failed_videos": failures, "target_false_positive_rate": false_positive_rate, "empirical_false_positive_rate": float(np.mean(np.asarray(scores) < threshold)), "notes": ["Calibration is an engineering extension to the preferred patent threshold", "Test labels are never used for threshold selection"]}
+    result = {"config": values, "model_id": detector.model_id, "method": "lower_quantile_of_real_validation_video_minimum_scores", "validation_scores": scores, "validation_rows": real_validation, "failed_videos": failures, "target_false_positive_rate": false_positive_rate, "empirical_false_positive_rate": float(np.mean(np.asarray(scores) < threshold)), "notes": ["Calibration is an engineering extension to the preferred patent threshold", "Test labels are never used for threshold selection"]}
     if output:
         atomic_json(output, result)
     return result

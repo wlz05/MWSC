@@ -7,8 +7,9 @@ from itertools import chain
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from support.storage import relative_path, protect_output
+from support.storage import relative_path, protect_output, paths_match
 from dataset.split import audit_splits
+from dataset.provenance import partitions, signature, verify_resume
 from model.weights import read_checkpoint, save_checkpoint
 from model.encoder import EncoderPair, device_from_name
 from dataset.samples import RealSegmentDataset, collate_segments, aligned_batch
@@ -87,6 +88,7 @@ def train_parallel(rows, config, checkpoint, epochs, batch_size, learning_rate, 
     model = EncoderPair(config).to(target)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.0001)
     start_epoch, steps = 0, 0
+    best_validation = float("inf")
     provenance = "local_temporal_contrastive_pretraining"
     if resume:
         payload, saved_config = read_checkpoint(resume)
@@ -94,6 +96,10 @@ def train_parallel(rows, config, checkpoint, epochs, batch_size, learning_rate, 
             raise ValueError("Resume configuration differs from checkpoint")
         if not isinstance(payload.get("optimizer"), dict):
             raise ValueError("Resume requires an optimizer state")
+        verify_resume(rows, payload)
+        best_validation = payload['training'].get('validation_loss')
+        if isinstance(best_validation, bool) or not isinstance(best_validation, (int, float)) or not math.isfinite(best_validation):
+            raise ValueError('Resume requires a finite selected validation loss')
         model.load_state_dict(payload["model"], strict=True)
         optimizer.load_state_dict(payload["optimizer"])
         start_epoch = int(payload["epoch"])
@@ -114,7 +120,9 @@ def train_parallel(rows, config, checkpoint, epochs, batch_size, learning_rate, 
     validation_loader = DataLoader(validation_subset, batch_size=batch_size, shuffle=False, num_workers=workers, collate_fn=collate_segments)
     distributed_model = parallel.wrap(model)
     history = []
-    best_validation = float("inf")
+    if resume and not paths_match(checkpoint, resume):
+        # Retain the resumed selection when later epochs do not improve it.
+        save_checkpoint(checkpoint, model, config, start_epoch, steps, optimizer, provenance, payload['training'])
     for epoch in range(start_epoch, start_epoch + epochs):
         train_set.set_epoch(epoch)
         if sampler is not None:
@@ -132,7 +140,7 @@ def train_parallel(rows, config, checkpoint, epochs, batch_size, learning_rate, 
             best_validation = validation
             if parallel.primary:
                 # Save only the selected checkpoint from rank zero.
-                training = {"seed": seed, "world_size": parallel.world_size, "per_device_batch_size": batch_size, "global_batch_size": batch_size * parallel.world_size, "validation_loss": validation}
+                training = {"seed": seed, "world_size": parallel.world_size, "per_device_batch_size": batch_size, "global_batch_size": batch_size * parallel.world_size, "validation_loss": validation, "partitions": partitions(rows), "partition_signature": signature(rows)}
                 save_checkpoint(checkpoint, model, config, epoch + 1, steps, optimizer, provenance, training)
         parallel.barrier()
     return {"checkpoint": str(checkpoint), "best_validation_loss": best_validation, "epochs": history, "split_audit": audit, "seed": seed, "world_size": parallel.world_size, "backend": parallel.backend, "per_device_batch_size": batch_size, "global_batch_size": batch_size * parallel.world_size, "objective": "Real-only temporal contrastive pretraining with rank-local negatives; an engineering extension"}

@@ -3,6 +3,7 @@
 
 from collections import defaultdict
 from pathlib import Path
+import posixpath
 import numpy as np
 from dataset.manifest import SPLITS, validate_rows, summary
 
@@ -22,10 +23,18 @@ class UnionFind:
 def connected_groups(rows):
     links = UnionFind(len(rows))
     owners = {}
+    sources = {(row.get('source_namespace') or row['dataset'], posixpath.normpath(row['source'].replace('\\', '/'))) for row in rows}
     # Link shared identities and source videos transitively.
     for index, row in enumerate(rows):
         dataset = row["dataset"]
-        keys = [("source", row.get("source_namespace") or dataset, row["source"])]
+        namespace = row.get("source_namespace") or dataset
+        keys = [("source", namespace, posixpath.normpath(row["source"].replace('\\', '/')))]
+        # Match declared originals to released video paths and their suffixes.
+        parts = Path(row['video'].replace('\\', '/')).parts if row.get('video') else ()
+        for start in range(len(parts)):
+            alias = '/'.join(parts[start:])
+            if (namespace, alias) in sources:
+                keys.append(('source', namespace, alias))
         keys.extend(("identity", row.get("identity_namespace") or dataset, identity.strip()) for identity in row["group"].split(";") if identity.strip())
         # Shared media remain linked even across dataset namespaces.
         for name in ("video", "audio"):
@@ -48,6 +57,18 @@ def connected_groups(rows):
     for index in range(len(rows)):
         groups[links.find(index)].append(index)
     return list(groups.values())
+
+def prepare_splits(rows, ratios=(0.7, 0.15, 0.15), seed=42, keep_official=False, regroup=False):
+    rows = validate_rows(rows)
+    if keep_official and regroup:
+        raise ValueError('Choose either supplied partitions or explicit regrouping')
+    supplied = [bool(row['split']) for row in rows]
+    if not regroup and (keep_official or any(supplied)):
+        if not all(supplied):
+            raise ValueError('Complete the supplied partition labels before splitting')
+        audit_splits(rows)
+        return rows
+    return grouped_split(rows, ratios, seed)
 
 def audit_splits(rows):
     rows = validate_rows(rows, require_split=True)

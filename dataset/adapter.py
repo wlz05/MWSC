@@ -38,8 +38,15 @@ def import_avdeepfake(root, metadata):
             raise ValueError("Unknown AV-Deepfake1M modification type")
         source = item.get("original") or item["file"]
         identity = str(item.get("speaker_id") or item.get("subject_id") or identity_from_path(source))
+        subset = canonical_split(item.get("split", ""))
+        filename = str(item["file"]).replace('\\', '/')
+        # The released SDK resolves media under its subset directory.
+        if subset and filename.split('/')[0] not in ('train', 'val', 'test'):
+            filename = subset + '/' + filename
         duration = item.get("duration", "")
-        row = {"dataset": "avdeepfake1m", "video": joined_path(root, item["file"]), "audio": "", "label": int(category != "real"), "group": identity or "source:" + source, "source": source, "split": canonical_split(item.get("split", "")), "duration": duration, "audio_offset": 0, "fake_segments": json.dumps(item.get("fake_segments", [])), "category": category, "audio_segments": json.dumps(item.get("audio_fake_segments", [])), "video_segments": json.dumps(item.get("visual_fake_segments", [])), "sync_label": item.get("sync_label", ""), "offset_seconds": item.get("offset_seconds", "")}
+        if duration == "" and "video_frames" in item:
+            duration = float(item['video_frames']) / 25.0
+        row = {"dataset": "avdeepfake1m", "video": joined_path(root, filename), "audio": "", "label": int(category != "real"), "group": identity or "source:" + source, "source": source, "split": subset, "duration": duration, "audio_offset": 0, "fake_segments": json.dumps(item.get("fake_segments", [])), "category": category, "audio_segments": json.dumps(item.get("audio_fake_segments", [])), "video_segments": json.dumps(item.get("visual_fake_segments", [])), "sync_label": item.get("sync_label", ""), "offset_seconds": item.get("offset_seconds", "")}
         rows.append(row)
     return validate_rows(rows)
 
