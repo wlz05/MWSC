@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -16,6 +17,14 @@ def build_commands(args):
         raise ValueError("Devices must be an integer from 1 to 8")
     if not args.seeds or len(set(args.seeds)) != len(args.seeds) or any(type(seed) is not int or not 0 <= seed < 2 ** 32 for seed in args.seeds):
         raise ValueError("Seeds must be distinct unsigned 32-bit integers")
+    if any(type(value) is not int for value in (args.epochs, args.batch_size, args.workers)) or args.epochs < 1 or args.batch_size < 1 or args.workers < 0:
+        raise ValueError("Epochs and batch size must be positive integers; workers must be nonnegative")
+    if isinstance(args.learning_rate, bool) or not isinstance(args.learning_rate, (int, float)) or not math.isfinite(args.learning_rate) or args.learning_rate <= 0:
+        raise ValueError("Learning rate must be finite and positive")
+    if args.maximum_steps is not None and (type(args.maximum_steps) is not int or args.maximum_steps < 1):
+        raise ValueError("Maximum steps must be a positive integer")
+    if args.image_size is not None and (type(args.image_size) is not int or args.image_size < 32):
+        raise ValueError("Image size must be an integer of at least 32")
     manifest = relative_path(args.manifest)
     root = relative_path(args.checkpoint_root)
     for value in (args.config, args.video_backbone, args.audio_backbone):

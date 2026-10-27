@@ -25,6 +25,15 @@ def paths_match(first, second):
     left, right = Path(first).resolve(), Path(second).resolve()
     return str(left).casefold() == str(right).casefold() or left.exists() and right.exists() and left.samefile(right)
 
+def protect_output(path, inputs):
+    if path is None:
+        return None
+    target = relative_path(path)
+    for value in inputs:
+        if value is not None and value != "" and paths_match(target, relative_path(value)):
+            raise ValueError("Output path would overwrite an input file")
+    return target
+
 def atomic_json(path, payload):
     target = relative_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

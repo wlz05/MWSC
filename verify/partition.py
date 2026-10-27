@@ -3,6 +3,7 @@
 
 import json
 import unittest
+import os
 from config import Config
 from support.storage import atomic_json, relative_path
 from dataset.adapter import import_avdeepfake, import_lavdf, import_fakeavceleb, import_dfdc, apply_identity_map
@@ -47,6 +48,27 @@ class ManifestTests(unittest.TestCase):
             validate_rows([row])
 
 class SplitTests(unittest.TestCase):
+    def test_shared_audio_links_different_dataset_namespaces(self):
+        rows = make_rows()[:2]
+        rows[1].update(dataset="other", group="another", source="another")
+        for row in rows:
+            row["audio"] = "data/shared.wav"
+        self.assertEqual(len(connected_groups(rows)), 1)
+        rows[0]["split"], rows[1]["split"] = "train", "test"
+        with self.assertRaisesRegex(ValueError, "leakage"):
+            audit_splits(rows)
+
+    def test_hardlinked_media_cannot_cross_dataset_splits(self):
+        with TemporaryWorkspace() as root:
+            first, second = root / "first.avi", root / "second.avi"
+            first.write_bytes(b"shared media")
+            os.link(first, second)
+            rows = make_rows()[:2]
+            rows[0].update(video=str(first), split="train")
+            rows[1].update(dataset="other", video=str(second), group="another", source="another", split="test")
+            with self.assertRaisesRegex(ValueError, "leakage"):
+                audit_splits(rows)
+
     def test_grouped_split_is_reproducible_and_disjoint(self):
         first = grouped_split(make_rows(), seed=123)
         second = grouped_split(make_rows(), seed=123)

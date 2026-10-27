@@ -14,19 +14,30 @@ def first_component(features, minimum_variance=1e-12):
     values = values.astype(np.float64)
     if values.ndim != 2 or min(values.shape) < 1 or len(values) < 4 or not np.isfinite(values).all():
         raise InsufficientEvidence("Invalid feature matrix")
-    centered = values - values.mean(axis=0, keepdims=True)
-    if np.max(np.var(centered, axis=0)) <= minimum_variance:
+    with np.errstate(over="ignore", invalid="ignore"):
+        centered = values - values.mean(axis=0, keepdims=True)
+        variance = np.var(centered, axis=0)
+    if not np.isfinite(centered).all() or not np.isfinite(variance).all():
+        raise InsufficientEvidence("Feature magnitude exceeds the stable PCA range")
+    if np.max(variance) <= minimum_variance:
         raise InsufficientEvidence("Feature sequence has no temporal variation")
-    _, singular, right = np.linalg.svd(centered, full_matrices=False)
+    try:
+        _, singular, right = np.linalg.svd(centered, full_matrices=False)
+    except np.linalg.LinAlgError as error:
+        raise InsufficientEvidence("PCA decomposition did not converge") from error
     direction = right[0]
     # Fix the PCA sign for a consistent temporal orientation.
     if direction[np.argmax(np.abs(direction))] < 0:
         direction = -direction
     series = centered @ direction
-    deviation = float(np.std(series))
+    with np.errstate(over="ignore", invalid="ignore"):
+        deviation = float(np.std(series))
+    if not np.isfinite(deviation) or not np.isfinite(singular).all():
+        raise InsufficientEvidence("PCA output exceeds the stable numeric range")
     if deviation * deviation <= minimum_variance:
         raise InsufficientEvidence("First principal component has negligible variance")
-    explained = float(singular[0] ** 2 / np.sum(singular ** 2))
+    # Normalize singular values before squaring to avoid overflow.
+    explained = float(1 / np.sum((singular / singular[0]) ** 2))
     return series / deviation, explained
 
 def morlet_cwt(series, sample_rate, frequencies, omega=6.0):

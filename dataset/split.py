@@ -2,6 +2,7 @@
 # MWSC: Multi-scale Wavelet Synchronization Coherence and Deep Learning for Deepfake Detection
 
 from collections import defaultdict
+from pathlib import Path
 import numpy as np
 from dataset.manifest import SPLITS, validate_rows, summary
 
@@ -26,6 +27,18 @@ def connected_groups(rows):
         dataset = row["dataset"]
         keys = [("source", row.get("source_namespace") or dataset, row["source"])]
         keys.extend(("identity", row.get("identity_namespace") or dataset, identity.strip()) for identity in row["group"].split(";") if identity.strip())
+        # Shared media remain linked even across dataset namespaces.
+        for name in ("video", "audio"):
+            if not row.get(name):
+                continue
+            path = Path(row[name]).resolve()
+            keys.append(("media_path", str(path).casefold()))
+            try:
+                info = path.stat()
+            except OSError:
+                continue
+            if info.st_ino:
+                keys.append(("media_file", info.st_dev, info.st_ino))
         for key in keys:
             if key in owners:
                 links.union(index, owners[key])
@@ -45,7 +58,7 @@ def audit_splits(rows):
         if len(splits) > 1:
             violations.append({"splits": sorted(splits), "videos": [rows[index]["video"] for index in group[:5]]})
     if violations:
-        raise ValueError("Identity or source leakage across splits: " + str(violations[:3]))
+        raise ValueError("Identity, source, or media leakage across splits: " + str(violations[:3]))
     report = summary(rows)
     report["connected_groups"] = len(groups)
     report["source_only_groups"] = sum(row["group"].startswith("source:") for row in rows)

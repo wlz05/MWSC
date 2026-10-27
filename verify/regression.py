@@ -20,11 +20,13 @@ from engine.stream import StreamSession
 from core.threshold import DynamicThreshold
 from core.audio import mono_resample
 from dataset.split import connected_groups
-from engine.evaluate import evaluate_row
+from engine.evaluate import evaluate_row, evaluate, calibrate
 from engine.detect import Detector
 from support.storage import atomic_json, relative_path, read_csv, write_csv, numpy_save
 from support.metrics import binary_metrics
-from model.weights import read_checkpoint, export_encoders
+from model.weights import read_checkpoint, export_encoders, save_checkpoint
+from engine.loss import temporal_contrastive_loss
+import torch
 from dataset.samples import RealSegmentDataset
 from main import load_config, parser_for_commands, validate_outputs
 from engine.train import train
@@ -163,6 +165,101 @@ class MediaRegressionTests(unittest.TestCase):
             self.assertEqual(report["failed"], 1)
 
 class BoundaryTests(unittest.TestCase):
+    def test_sync_offsets_accept_arrays_and_single_use_generators(self):
+        rows = validate_rows([self.row(sync_label=0, offset_seconds=0)])
+        clip = SimpleNamespace(start=0, end=2, sample_rate=16000)
+        def measurement(*args):
+            return {"estimated_offset_seconds": 0, "predicted_sync_label": 0, "synchronization_score": 0.9, "patent_decision": "real"}
+        for offsets in (np.asarray([0, 0.1]), (value for value in (0, 0.1))):
+            with patch("engine.sync.Detector", return_value=SimpleNamespace(config=Config())), patch("engine.sync.read_media", return_value=clip), patch("engine.sync.shifted_clip", return_value=clip), patch("engine.sync.sync_measurement", side_effect=measurement):
+                result = evaluate_sync(rows, "weights/model.pt", offsets=offsets)
+            self.assertEqual(result["controlled_offsets_seconds"], [0.0, 0.1])
+            self.assertEqual(result["attempted_pairs"], 2)
+            self.assertEqual(result["scored_pairs"], 2)
+
+    def test_sync_offsets_reject_scalars_booleans_and_complex_values(self):
+        for offsets in (0.1, [True], [float("nan")], [1j], [[0.1]]):
+            with patch("engine.sync.Detector") as detector, self.assertRaises(ValueError):
+                evaluate_sync([], "weights/model.pt", offsets=offsets)
+            detector.assert_not_called()
+
+    def test_direct_report_outputs_cannot_overwrite_models_or_media(self):
+        rows = validate_rows([self.row(video="data/video.mp4", audio="data/audio.wav")])
+        for function in (evaluate, calibrate, evaluate_sync):
+            for target in ("weights/model.pt", "data/video.mp4", "data/audio.wav"):
+                with self.subTest(function=function.__name__, target=target), patch("engine.evaluate.Detector") as detector, patch("engine.sync.Detector") as sync_detector:
+                    with self.assertRaisesRegex(ValueError, "overwrite"):
+                        function(rows, "weights/model.pt", output=target)
+                    detector.assert_not_called()
+                    sync_detector.assert_not_called()
+
+    def test_direct_report_outputs_reject_hardlink_aliases(self):
+        with TemporaryWorkspace() as root:
+            checkpoint, output = root / "model.pt", root / "result.json"
+            checkpoint.write_bytes(b"original model")
+            os.link(checkpoint, output)
+            rows = validate_rows([self.row()])
+            for function in (evaluate, calibrate, evaluate_sync):
+                with self.assertRaisesRegex(ValueError, "overwrite"):
+                    function(rows, checkpoint, output=output)
+            self.assertEqual(checkpoint.read_bytes(), b"original model")
+
+    def test_direct_training_protects_media_and_backbones(self):
+        rows = validate_rows([self.row()])
+        targets = ((rows[0]["video"], {}), ("weights/video.pt", {"video_backbone": "weights/video.pt"}))
+        for target, options in targets:
+            with patch("engine.train.ParallelContext") as context, self.assertRaisesRegex(ValueError, "overwrite"):
+                train(rows, Config(), target, **options)
+            context.assert_not_called()
+
+    def test_invalid_evaluation_limits_are_rejected_before_loading(self):
+        for function in (evaluate, evaluate_sync):
+            for value in (0, -1, 0.5, True):
+                with self.assertRaisesRegex(ValueError, "limit"):
+                    function([], "weights/model.pt", limit=value)
+
+    def test_invalid_calibration_rates_are_rejected_before_loading(self):
+        for value in (float("nan"), float("inf"), True, "0.1", -0.1, 1):
+            with self.assertRaises(ValueError):
+                calibrate([], "weights/model.pt", false_positive_rate=value)
+
+    def test_nonfinite_weights_do_not_replace_a_checkpoint(self):
+        with TemporaryWorkspace() as root:
+            path = root / "model.pt"
+            path.write_bytes(b"previous model")
+            model = torch.nn.Linear(1, 1)
+            with torch.no_grad():
+                model.weight.fill_(float("nan"))
+            with self.assertRaisesRegex(ValueError, "nonfinite"):
+                save_checkpoint(path, model, Config(), 1, 1)
+            self.assertEqual(path.read_bytes(), b"previous model")
+
+    def test_pca_overflow_and_decomposition_failures_are_recoverable(self):
+        with self.assertRaises(InsufficientEvidence):
+            first_component(np.full((8, 2), 1e308))
+        with patch("core.wavelet.np.linalg.svd", side_effect=np.linalg.LinAlgError("no convergence")):
+            with self.assertRaises(InsufficientEvidence):
+                first_component(np.arange(16).reshape(8, 2))
+
+    def test_pca_explained_variance_stays_finite_for_large_features(self):
+        series, explained = first_component(np.column_stack((np.linspace(-1e153, 1e153, 64), np.zeros(64))))
+        self.assertTrue(np.isfinite(series).all())
+        self.assertAlmostEqual(explained, 1)
+
+    def test_contrastive_loss_rejects_invalid_numeric_parameters(self):
+        video = torch.ones(1, 4, 2)
+        for value in (0, -1, float("nan"), float("inf"), True):
+            with self.assertRaises(ValueError):
+                temporal_contrastive_loss(video, video, temperature=value)
+        for value in (-1, 0.5, True):
+            with self.assertRaises(ValueError):
+                temporal_contrastive_loss(video, video, exclusion_frames=value)
+
+    def test_contrastive_loss_rejects_empty_or_nonfinite_features(self):
+        for values in (torch.empty(0, 4, 2), torch.full((1, 4, 2), float("nan")), torch.ones(1, 4, 2, dtype=torch.long)):
+            with self.assertRaises(ValueError):
+                temporal_contrastive_loss(values, values)
+
     def row(self, **overrides):
         values = {"dataset": "private", "video": "data/example.mp4", "label": 0, "group": "alice", "source": "session", "split": "test", "duration": 2}
         values.update(overrides)

@@ -3,10 +3,11 @@
 
 import random
 import math
+from itertools import chain
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from support.storage import relative_path
+from support.storage import relative_path, protect_output
 from dataset.split import audit_splits
 from model.weights import read_checkpoint, save_checkpoint
 from model.encoder import EncoderPair, device_from_name
@@ -71,6 +72,8 @@ def train(rows, config, checkpoint, epochs=10, batch_size=2, learning_rate=0.000
         raise ValueError("Maximum steps must be a positive integer")
     if epochs < 1 or batch_size < 1 or learning_rate <= 0 or workers < 0 or not 0 <= seed < 2 ** 32:
         raise ValueError("Invalid training parameters")
+    # Resume may replace its checkpoint, while source media stay protected.
+    protect_output(relative_path(checkpoint), chain((video_backbone, audio_backbone), (row.get(key) for row in rows for key in ("video", "audio"))))
     seed_everything(seed)
     config.validate()
     parallel = ParallelContext(device)

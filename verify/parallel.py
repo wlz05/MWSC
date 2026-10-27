@@ -67,6 +67,12 @@ class ParallelTests(unittest.TestCase):
             self.assertEqual(command[command.index("--seed") + 1], str(seed))
             self.assertIn("seed" + str(seed), command[command.index("--checkpoint") + 1])
 
+    def test_launcher_rejects_invalid_training_values_before_spawning(self):
+        parser = parser_for_runs()
+        for tail in (["--epochs", "0"], ["--batch-size", "0"], ["--workers", "-1"], ["--learning-rate", "nan"], ["--learning-rate", "inf"], ["--maximum-steps", "0"], ["--image-size", "16"]):
+            with self.subTest(arguments=tail), self.assertRaises(ValueError):
+                build_commands(parser.parse_args(["--manifest", "data/split.csv", *tail]))
+
     def test_seed_launcher_rejects_duplicate_seeds_and_absolute_paths(self):
         parser = parser_for_runs()
         for tail in (["--seeds", "42", "42"], ["--devices", "0"], ["--seeds", "-1"], ["--checkpoint-root", "".join(("C", ":", "/", "weights"))]):

@@ -2,13 +2,14 @@
 # MWSC: Multi-scale Wavelet Synchronization Coherence and Deep Learning for Deepfake Detection
 
 import numpy as np
+from itertools import chain
 from core.align import align_features, AlignmentError
 from engine.detect import Detector, score_features
 from dataset.manifest import select_rows
 from core.media import MediaClip, read_media
 from support.metrics import binary_metrics
 from dataset.split import audit_splits
-from support.storage import atomic_json
+from support.storage import atomic_json, protect_output
 from core.wavelet import first_component, InsufficientEvidence
 
 def estimate_offset(video, audio, video_times, audio_times, config, maximum_offset=0.5):
@@ -80,9 +81,19 @@ def evaluate_sync(rows, checkpoint, split="test", device="auto", config_override
         raise ValueError("Synchronization evaluation requires val or test")
     if not np.isfinite(tolerance_seconds) or tolerance_seconds < 0 or not np.isfinite(maximum_offset) or maximum_offset <= 0:
         raise ValueError("Synchronization bounds must be finite and valid")
-    if offsets is not None and (not offsets or not all(np.isfinite(value) and abs(value) <= maximum_offset for value in offsets)):
-        raise ValueError("Controlled offsets must be nonempty and inside the search range")
+    if offsets is not None:
+        try:
+            # Materialize once so generators survive validation and evaluation.
+            offsets = list(offsets)
+        except TypeError as error:
+            raise ValueError("Controlled offsets must be a sequence of real numbers") from error
+        if not offsets or any(isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, float, np.integer, np.floating)) or not np.isfinite(value) or abs(value) > maximum_offset for value in offsets):
+            raise ValueError("Controlled offsets must be nonempty and inside the search range")
+        offsets = [float(value) for value in offsets]
+    if limit is not None and (type(limit) is not int or limit < 1):
+        raise ValueError("Synchronization evaluation limit must be a positive integer")
     audit = audit_splits(rows)
+    protect_output(output, chain((checkpoint,), (row.get(key) for row in rows for key in ("video", "audio"))))
     selected = select_rows(rows, split, real_only=offsets is not None)
     if limit is not None:
         if limit < 1:

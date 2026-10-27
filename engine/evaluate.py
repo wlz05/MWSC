@@ -2,8 +2,9 @@
 # MWSC: Multi-scale Wavelet Synchronization Coherence and Deep Learning for Deepfake Detection
 
 import math
+from itertools import chain
 import numpy as np
-from support.storage import atomic_json
+from support.storage import atomic_json, protect_output
 from core.media import read_media, probe_duration
 from engine.detect import Detector
 from core.threshold import DynamicThreshold
@@ -51,7 +52,11 @@ def evaluate_row(detector, row, adaptive=False):
 def evaluate(rows, checkpoint, split="test", device="auto", config_override=None, adaptive=False, limit=None, output=None):
     if split not in ("val", "test"):
         raise ValueError("Evaluation requires a validation or test split")
+    if limit is not None and (type(limit) is not int or limit < 1):
+        raise ValueError("Evaluation limit must be a positive integer")
     audit = audit_splits(rows)
+    # Protect model and media inputs for direct Python callers too.
+    protect_output(output, chain((checkpoint,), (row.get(key) for row in rows for key in ("video", "audio"))))
     selected = select_rows(rows, split)
     if limit is not None:
         if limit < 1:
@@ -88,9 +93,10 @@ def evaluate(rows, checkpoint, split="test", device="auto", config_override=None
     return report
 
 def calibrate(rows, checkpoint, false_positive_rate=0.05, device="auto", output=None):
-    if not 0 <= false_positive_rate < 1:
+    if isinstance(false_positive_rate, bool) or not isinstance(false_positive_rate, (int, float)) or not math.isfinite(false_positive_rate) or not 0 <= false_positive_rate < 1:
         raise ValueError("False positive rate must lie in [0, 1)")
     audit_splits(rows)
+    protect_output(output, chain((checkpoint,), (row.get(key) for row in rows for key in ("video", "audio"))))
     # Calibrate the threshold from held-out real videos only.
     real_validation = select_rows(rows, "val", real_only=True)
     detector = Detector(checkpoint, device)

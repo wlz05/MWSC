@@ -2,11 +2,20 @@
 # MWSC: Multi-scale Wavelet Synchronization Coherence and Deep Learning for Deepfake Detection
 
 import torch
+import math
 from torch.nn import functional as F
 
 def temporal_contrastive_loss(video, audio, temperature=0.1, exclusion_frames=4):
-    if video.shape != audio.shape or video.ndim != 3:
+    if video.shape != audio.shape or video.ndim != 3 or min(video.shape) < 1:
         raise ValueError("Contrastive loss needs equal [batch, time, channels] tensors")
+    if not video.is_floating_point() or not audio.is_floating_point() or video.device != audio.device or video.dtype != audio.dtype:
+        raise ValueError("Contrastive features need matching floating-point types and devices")
+    if isinstance(temperature, bool) or not isinstance(temperature, (int, float)) or not math.isfinite(temperature) or temperature <= 0:
+        raise ValueError("Contrastive temperature must be finite and positive")
+    if type(exclusion_frames) is not int or exclusion_frames < 0:
+        raise ValueError("Excluded frame count must be a nonnegative integer")
+    if not torch.isfinite(video).all() or not torch.isfinite(audio).all():
+        raise ValueError("Contrastive features must be finite")
     batch, time, channels = video.shape
     video_norm = F.normalize(video, dim=-1).reshape(-1, channels)
     audio_norm = F.normalize(audio, dim=-1).reshape(-1, channels)

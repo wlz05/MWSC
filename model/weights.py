@@ -20,6 +20,8 @@ def save_checkpoint(path, model, config, epoch, training_steps, optimizer=None, 
         raise ValueError("Checkpoint requires valid epoch and provenance")
     target.parent.mkdir(parents=True, exist_ok=True)
     state = {key: value.detach().cpu() for key, value in model.state_dict().items()}
+    if any(not torch.isfinite(value).all() for value in state.values()):
+        raise ValueError("Cannot save nonfinite encoder weights")
     payload = {"version": FORMAT_VERSION, "config": config.to_dict(), "model": state, "epoch": int(epoch), "training_steps": int(training_steps), "provenance": provenance}
     if training is not None:
         payload["training"] = dict(training)

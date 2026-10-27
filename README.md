@@ -227,7 +227,7 @@ custom,../datasets/custom/fake.mp4,,1,bob,clip002,test,4,0,"[[1.0,2.0]]",,
 
 Paths are relative to the command's working directory. Labels use `0 = real` and `1 = fake`. Optional `audio_segments` and `video_segments` preserve modality-specific intervals; their union contributes to `fake_segments`.
 
-`group` identifies people, while `source` links derivatives of the same original video. Splitting keeps connected identities and original sources together. Supply an identity map when the source metadata only identifies video families. `identity_namespace` and `source_namespace` link IDs across related datasets.
+`group` identifies people, while `source` links derivatives of the same original video. Splitting keeps connected identities and original sources together. Shared audio files, resolved media paths, and existing hard-link aliases join the same component across dataset namespaces. Supply an identity map when the source metadata only identifies video families. `identity_namespace` and `source_namespace` link IDs across related datasets.
 
 Synchronization truth is separate from authenticity: `sync_label` is `0 = synchronized`, `1 = asynchronous`, or empty when unknown. `offset_seconds` is a measured audio lag. A real label alone does not establish synchronization.
 
@@ -368,6 +368,8 @@ python -B main.py demo
 ```
 
 The tests cover signal equations, dataset splits, training/inference, synchronization offsets, pretrained model compatibility, and distributed data sharding.
+
+Direct evaluation, calibration, synchronization testing, and training protect input media and model files from output-path collisions, including hard-link aliases. Invalid launcher parameters are rejected before distributed workers start. PCA decomposition failures and numeric overflow produce an insufficient-evidence result, while nonfinite model weights are rejected before checkpoint replacement.
 
 SyncNet results on the official 12.68-second example, using CPU inference:
 
