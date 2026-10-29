@@ -72,5 +72,5 @@ class StreamSession:
                 self.audio.popleft()
         return results
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

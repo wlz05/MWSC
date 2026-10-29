@@ -293,5 +293,5 @@ def iter_windows(video_path, config, audio_path=None, start=0.0, duration=None, 
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             yield index, begin, begin + config.segment_seconds, None, str(error)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

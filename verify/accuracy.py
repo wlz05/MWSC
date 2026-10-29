@@ -29,5 +29,5 @@ class MetricTests(unittest.TestCase):
         self.assertAlmostEqual(result["average_precision"], 5 / 6)
         self.assertEqual(result["recall"], 1)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

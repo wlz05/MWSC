@@ -128,5 +128,5 @@ READINESS = {"implemented": ["Dense feature encoders and local pretraining", "Pa
 def report():
     return {"project": PROJECT, "patent": PATENT, "formulas": FORMULAS, "claim_mapping": PATENT_MAPPING, "implementation_choices": IMPLEMENTATION_CHOICES, "limitations": LIMITATIONS, "workflow": WORKFLOW, "hardware": HARDWARE, "interfaces": INTERFACES, "readiness": READINESS}
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

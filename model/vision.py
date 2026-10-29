@@ -98,5 +98,5 @@ class DenseI3D(nn.Module):
         self.end_points.load_state_dict(converted, strict=True)
         return {"loaded": len(converted), "ignored": len(state) - len(converted)}
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

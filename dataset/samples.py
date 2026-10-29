@@ -73,5 +73,5 @@ def aligned_batch(video, audio, samples):
         aligned_audio.append(temporal_interpolate(audio[index, :len(at)], at, grid))
     return torch.stack(aligned_video), torch.stack(aligned_audio)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

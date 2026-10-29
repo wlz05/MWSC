@@ -317,5 +317,5 @@ class ExpertTests(unittest.TestCase):
                 self.assertAlmostEqual(result[0][1], expected)
                 self.assertAlmostEqual(result[1][1] - result[0][1], 0.04)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

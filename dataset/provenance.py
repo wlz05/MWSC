@@ -53,5 +53,5 @@ def verify_calibration(rows, record, split):
             if any(index < len(reference) for index in group) and any(index >= len(reference) for index in group):
                 raise ValueError('Test membership overlaps threshold calibration data')
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

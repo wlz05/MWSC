@@ -71,5 +71,5 @@ class ScriptedPair(torch.nn.Module):
     def forward(self, video, audio):
         return self.video(video), self.audio(audio)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

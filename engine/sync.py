@@ -150,5 +150,5 @@ def evaluate_sync(rows, checkpoint, split="test", device="auto", config_override
         atomic_json(output, report)
     return report
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

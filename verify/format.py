@@ -43,5 +43,5 @@ class SourceTests(unittest.TestCase):
             self.assertTrue(any('single-line docstring' in error for error in report['errors']))
             self.assertTrue(any('trailing whitespace' in error for error in report['errors']))
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

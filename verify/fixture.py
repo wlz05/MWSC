@@ -39,5 +39,5 @@ def synthetic_media(root, name, config, phase=0.0):
     wavfile.write(audio_path, config.sample_rate, (waveform * 32767).astype(np.int16))
     return str(video_path), str(audio_path)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

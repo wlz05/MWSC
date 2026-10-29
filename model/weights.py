@@ -92,5 +92,5 @@ def export_encoders(checkpoint, video_path, audio_path):
             scripted.save(str(target))
     return {"video": str(video_path), "audio": str(audio_path), "config": config.to_dict(), "provenance": payload["provenance"]}
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

@@ -98,5 +98,5 @@ class NeuralTests(unittest.TestCase):
             with torch.no_grad():
                 torch.testing.assert_close(scripted_video(values), model.video(values))
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

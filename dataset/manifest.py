@@ -124,5 +124,5 @@ def window_label(row, start, end):
         return int(row["label"])
     return int(any(max(start, left) < min(end, right) for left, right in intervals))
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

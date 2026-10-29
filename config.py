@@ -99,5 +99,5 @@ class Config:
             raise ValueError("Unknown configuration keys: " + ", ".join(sorted(unknown)))
         return cls(**values).validate()
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

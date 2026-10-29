@@ -66,5 +66,5 @@ def load_expert(path, device="auto"):
     model.load_state_dict({**expected, **state}, strict=True)
     return model.to(device_from_name(device)).eval()
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

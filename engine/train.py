@@ -145,5 +145,5 @@ def train_parallel(rows, config, checkpoint, epochs, batch_size, learning_rate, 
         parallel.barrier()
     return {"checkpoint": str(checkpoint), "best_validation_loss": best_validation, "epochs": history, "split_audit": audit, "seed": seed, "world_size": parallel.world_size, "backend": parallel.backend, "per_device_batch_size": batch_size, "global_batch_size": batch_size * parallel.world_size, "objective": "Real-only temporal contrastive pretraining with rank-local negatives; an engineering extension"}
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

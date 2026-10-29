@@ -78,5 +78,5 @@ def localization_metrics(predictions, ground_truth, thresholds=(0.3, 0.5, 0.7)):
         result[str(threshold)] = {"average_precision": float(ap), "recall": float(recall[-1]), "ground_truth_intervals": total_true}
     return result
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

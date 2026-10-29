@@ -100,5 +100,5 @@ class MediaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             session.push_audio(np.ones(1600), 0.2)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

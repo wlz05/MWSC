@@ -36,5 +36,5 @@ def temporal_contrastive_loss(video, audio, temperature=0.1, exclusion_frames=4)
     total = contrastive + positive + variance
     return total, {"contrastive": float(contrastive.detach()), "positive": float(positive.detach()), "variance": float(variance.detach())}
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

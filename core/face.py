@@ -131,5 +131,5 @@ class FaceReader:
             raise ValueError("Too few color frames for lip synchronization")
         return np.asarray(crops), np.asarray(times), np.asarray(validity, dtype=bool)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

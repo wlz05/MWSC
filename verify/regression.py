@@ -634,5 +634,5 @@ class BoundaryTests(unittest.TestCase):
         with self.assertRaises(InsufficientEvidence):
             first_component(np.arange(60)[:, None] + 1j)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

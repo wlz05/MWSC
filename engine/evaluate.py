@@ -120,5 +120,5 @@ def calibrate(rows, checkpoint, false_positive_rate=0.05, device="auto", output=
         atomic_json(output, result)
     return result
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

@@ -122,5 +122,5 @@ def synchronization_score(video_features, audio_features, config):
         "warnings": ["Short windows provide limited evidence at low frequencies", "Synchronization score is not a fake probability"],
     }
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

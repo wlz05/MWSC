@@ -113,5 +113,5 @@ def align_features(video, audio, video_times, audio_times, config):
         "aligned_samples": count,
     }
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

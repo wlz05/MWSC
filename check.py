@@ -10,7 +10,7 @@ import tokenize
 
 HEADER = "# -*- coding: utf-8 -*-"
 TITLE = "# MWSC: Multi-scale Wavelet Synchronization Coherence and Deep Learning for Deepfake Detection"
-FOOTER = ("# Author: Weiliang Zhu", "# Email: wlzchina05@gmail.com")
+FOOTER = ("# Author: Weiliang Zhu; Other main author: Yeming Dai", "# Email: wlzchina05@gmail.com")
 
 def inspect_document(path):
     text = path.read_text(encoding='utf-8')
@@ -92,5 +92,5 @@ if __name__ == "__main__":
     print(json.dumps(report, indent=2))
     raise SystemExit(0 if report["passed"] else 1)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

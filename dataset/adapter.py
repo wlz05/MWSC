@@ -111,5 +111,5 @@ def apply_identity_map(rows, path):
     return [{**row, "group": identities[row["source"]]} for row in rows]
 ADAPTERS = {"fakeavceleb": import_fakeavceleb, "lavdf": import_lavdf, "avdeepfake1m": import_avdeepfake, "dfdc": import_dfdc}
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

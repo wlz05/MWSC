@@ -146,5 +146,5 @@ class AdapterTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 apply_identity_map(make_rows(), path)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

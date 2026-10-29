@@ -61,5 +61,5 @@ def device_from_name(name="auto"):
         raise RuntimeError("CUDA was requested but is unavailable")
     return device
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

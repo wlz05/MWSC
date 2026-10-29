@@ -106,5 +106,5 @@ class Detector:
         scores = {"mwsc_mean": float(np.mean([item["synchronization_score"] for item in valid])) if valid else None, "mwsc_min": min((item["synchronization_score"] for item in valid), default=None), "mwsc_normalized_mean": float(np.mean([item["synchronization_score"] / item["score_upper_bound"] for item in valid])) if valid else None}
         return {"project": "MWSC", "decision": decision, "aggregation": "any_fake_segment", "model_id": self.model_id, "scores": scores, "segments": results, "valid_segments": len(valid), "total_segments": len(results), "window_coverage": len(valid) / len(results), "bounded_window_decoding": True}
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

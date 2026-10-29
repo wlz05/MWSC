@@ -93,5 +93,5 @@ def numpy_save(path, **arrays):
         if os.path.exists(name):
             os.unlink(name)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

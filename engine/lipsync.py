@@ -181,5 +181,5 @@ def add_lipsync(result, video_path, audio_path=None, **options):
         result["lip_sync"] = {"metric": "SyncNet v2 LSE-C/LSE-D", "status": "unavailable", "reason": str(error), "lse_c": None, "lse_d": None, "audio_lag_seconds": None}
     return result
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

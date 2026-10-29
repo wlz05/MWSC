@@ -71,5 +71,5 @@ def logmel_from_stft(log_power, config):
     power = np.expm1(np.asarray(log_power, dtype=np.float64))
     return np.log(filters.T @ power + 0.01).astype(np.float32)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

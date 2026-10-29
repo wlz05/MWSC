@@ -71,5 +71,5 @@ def fetch_assets(weights, example=None):
         result["example"] = download_asset("example.avi", example, probe_duration)
     return result
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

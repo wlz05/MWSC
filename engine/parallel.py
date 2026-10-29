@@ -85,5 +85,5 @@ class ParallelContext:
             dist.destroy_process_group()
             self.owned = False
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

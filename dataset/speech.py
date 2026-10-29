@@ -58,5 +58,5 @@ def audit_media(rows, config, limit=None):
             outcomes.append({"video": row["video"], "passed": False, "reason": str(error)})
     return {"checked": len(selected), "passed": sum(item["passed"] for item in outcomes), "failed": sum(not item["passed"] for item in outcomes), "samples": outcomes}
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com

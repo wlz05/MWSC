@@ -98,5 +98,5 @@ class ParallelTests(unittest.TestCase):
             context.rank = rank
             self.assertEqual(context.primary, expected)
 
-# Author: Weiliang Zhu
+# Author: Weiliang Zhu; Other main author: Yeming Dai
 # Email: wlzchina05@gmail.com
