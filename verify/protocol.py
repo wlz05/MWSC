@@ -4,7 +4,8 @@
 from copy import deepcopy
 from dataclasses import replace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from types import SimpleNamespace
 import torch
 from config import Config
 from dataset.manifest import validate_rows
@@ -106,6 +107,24 @@ class ProtocolTests(unittest.TestCase):
         verify_calibration(values, reference, 'test')
         with self.assertRaises(ValueError):
             verify_calibration([{**values[1], 'split': 'test'}], reference, 'test')
+
+    def test_resumed_checkpoint_copy_is_written_only_by_rank_zero(self):
+        values = rows()
+        config = replace(Config(), image_size=32, feature_dim=8)
+        with TemporaryWorkspace() as root:
+            model = EncoderPair(config)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=0.0001, weight_decay=0.0001)
+            saved = metadata(values)["training"]
+            saved["validation_loss"] = 0.1
+            original, target = root / "original.pt", root / "resumed.pt"
+            save_checkpoint(original, model, config, 2, 3, optimizer, training=saved)
+            for primary in (True, False):
+                context = SimpleNamespace(device=torch.device("cpu"), world_size=2, primary=primary, backend="gloo", training_sampler=lambda *args: None, validation_subset=lambda dataset: dataset, wrap=lambda model: model, synchronize_buffers=Mock(), barrier=Mock(), close=Mock())
+                with patch("engine.train.ParallelContext", return_value=context), patch("engine.train.run_epoch", side_effect=[(1.0, 1), (0.2, 1)]), patch("engine.train.save_checkpoint") as writer:
+                    train(values, config, target, epochs=1, device="cpu", resume=original)
+                self.assertEqual(writer.call_count, int(primary))
+                self.assertEqual(context.barrier.call_count, 2)
+                context.close.assert_called_once()
 
     def test_resume_preserves_a_better_selected_checkpoint_at_a_new_path(self):
         values = rows()

@@ -4,6 +4,7 @@
 import hashlib
 import json
 import zipfile
+from zlib import error as CompressionError
 import numpy as np
 from core.align import align_features, AlignmentError
 from support.storage import numpy_save, relative_path
@@ -34,22 +35,22 @@ def save_features(path, features, config, model_id):
 def load_features(path):
     try:
         archive = np.load(relative_path(path, True), allow_pickle=False)
-    except (EOFError, zipfile.BadZipFile) as error:
+        if not isinstance(archive, np.lib.npyio.NpzFile):
+            raise ValueError("Feature input must be an NPZ archive")
+        with archive:
+            required = {"video", "audio", "video_times", "audio_times", "config", "version", "model_id"}
+            if not required.issubset(archive.files):
+                raise ValueError("Unsupported feature archive")
+            version = archive["version"]
+            if version.ndim != 0 or not np.issubdtype(version.dtype, np.integer) or int(version) != 1:
+                raise ValueError("Unsupported feature archive")
+            from config import Config
+            config = Config.from_dict(json.loads(str(archive["config"])))
+            features = tuple(np.asarray(archive[key]).copy() for key in ("video", "audio", "video_times", "audio_times"))
+            model_id = str(archive["model_id"])
+        return features, config, model_id
+    except (EOFError, zipfile.BadZipFile, CompressionError) as error:
         raise ValueError("Feature archive cannot be decoded") from error
-    if not isinstance(archive, np.lib.npyio.NpzFile):
-        raise ValueError("Feature input must be an NPZ archive")
-    with archive:
-        required = {"video", "audio", "video_times", "audio_times", "config", "version", "model_id"}
-        if not required.issubset(archive.files):
-            raise ValueError("Unsupported feature archive")
-        version = archive["version"]
-        if version.ndim != 0 or not np.issubdtype(version.dtype, np.integer) or int(version) != 1:
-            raise ValueError("Unsupported feature archive")
-        from config import Config
-        config = Config.from_dict(json.loads(str(archive["config"])))
-        features = tuple(np.asarray(archive[key]).copy() for key in ("video", "audio", "video_times", "audio_times"))
-        model_id = str(archive["model_id"])
-    return features, config, model_id
 
 class Detector:
     def __init__(self, checkpoint, device="auto", stream_id="default", config_override=None):

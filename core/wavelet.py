@@ -68,8 +68,15 @@ def morlet_cwt(series, sample_rate, frequencies, omega=6.0):
 def scale_coherence(video_coefficients, audio_coefficients):
     video = np.asarray(video_coefficients, dtype=np.complex128)
     audio = np.asarray(audio_coefficients, dtype=np.complex128)
-    if video.shape != audio.shape or video.ndim != 2 or not np.isfinite(video).all() or not np.isfinite(audio).all():
+    if video.shape != audio.shape or video.ndim != 2 or min(video.shape) < 1 or not np.isfinite(video).all() or not np.isfinite(audio).all():
         raise ValueError("Wavelet coefficient shapes or values are invalid")
+    video_scale = np.max(np.maximum(np.abs(video.real), np.abs(video.imag)), axis=1)[:, None]
+    audio_scale = np.max(np.maximum(np.abs(audio.real), np.abs(audio.imag)), axis=1)[:, None]
+    if np.any(video_scale == 0) or np.any(audio_scale == 0):
+        raise InsufficientEvidence("A wavelet scale has zero energy")
+    # Independent rescaling cancels from the coherence ratio.
+    video = video.real / video_scale + 1j * (video.imag / video_scale)
+    audio = audio.real / audio_scale + 1j * (audio.imag / audio_scale)
     # Square the magnitude after the temporal sum.
     numerator = np.abs(np.sum(video * np.conj(audio), axis=1)) ** 2
     denominator = np.sum(np.abs(video) ** 2, axis=1) * np.sum(np.abs(audio) ** 2, axis=1)

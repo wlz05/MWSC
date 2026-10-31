@@ -14,7 +14,7 @@ def relative_path(value, must_exist=False):
     text = os.fspath(value)
     if not isinstance(text, str) or not text.strip() or "\x00" in text:
         raise ValueError("Path must contain nonempty valid text")
-    if ntpath.isabs(text) or Path(text).is_absolute() or ntpath.splitdrive(text)[0]:
+    if text.startswith(("/", "\\")) or ntpath.isabs(text) or Path(text).is_absolute() or ntpath.splitdrive(text)[0]:
         raise ValueError("Use a nonempty relative path: " + text)
     path = Path(text)
     if must_exist and not path.exists():

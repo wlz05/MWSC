@@ -81,15 +81,27 @@ def export_encoders(checkpoint, video_path, audio_path):
     if config.architecture == "i3d_vggish":
         spectrum = logmel_from_stft(spectrum, config)
     audio = torch.from_numpy(spectrum)[None, None]
-    for module, example, destination in ((model.video, video, video_path), (model.audio, audio, audio_path)):
-        target = relative_path(destination)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with torch.inference_mode():
-            scripted = torch.jit.trace(module, example)
-            expected = module(example)
-            if not torch.allclose(scripted(example), expected, atol=1e-5, rtol=1e-4):
-                raise RuntimeError("TorchScript export failed numerical validation")
-            scripted.save(str(target))
+    staged = []
+    try:
+        for module, example, destination in ((model.video, video, video_path), (model.audio, audio, audio_path)):
+            target = relative_path(destination)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            handle, temporary = tempfile.mkstemp(prefix="export-", suffix=".ts", dir=target.parent)
+            os.close(handle)
+            staged.append((temporary, target))
+            with torch.inference_mode():
+                scripted = torch.jit.trace(module, example)
+                expected = module(example)
+                if not torch.allclose(scripted(example), expected, atol=1e-5, rtol=1e-4):
+                    raise RuntimeError("TorchScript export failed numerical validation")
+                scripted.save(temporary)
+        # Stage both encoders before replacing either existing export.
+        for temporary, target in staged:
+            os.replace(temporary, target)
+    finally:
+        for temporary, _ in staged:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
     return {"video": str(video_path), "audio": str(audio_path), "config": config.to_dict(), "provenance": payload["provenance"]}
 
 # Author: Weiliang Zhu; Other main author: Yeming Dai

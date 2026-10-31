@@ -122,7 +122,9 @@ def train_parallel(rows, config, checkpoint, epochs, batch_size, learning_rate, 
     history = []
     if resume and not paths_match(checkpoint, resume):
         # Retain the resumed selection when later epochs do not improve it.
-        save_checkpoint(checkpoint, model, config, start_epoch, steps, optimizer, provenance, payload['training'])
+        if parallel.primary:
+            save_checkpoint(checkpoint, model, config, start_epoch, steps, optimizer, provenance, payload['training'])
+        parallel.barrier()
     for epoch in range(start_epoch, start_epoch + epochs):
         train_set.set_epoch(epoch)
         if sampler is not None:

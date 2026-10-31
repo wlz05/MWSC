@@ -9,9 +9,31 @@ import torch
 from torch.utils.data import TensorDataset
 from engine.parallel import ParallelContext
 from engine.train import seed_everything
-from run import SEEDS, build_commands, parser_for_runs
+from run import SEEDS, build_commands, parser_for_runs, evaluation_commands, seed_summary
 
 class ParallelTests(unittest.TestCase):
+    def test_four_seed_reports_average_each_metric_equally(self):
+        rows = [{"seed": seed, "metrics": {"clip_metrics": {"f1": value, "roc_auc": None}}, "protocol": {"videos": ["a", "b"]}} for seed, value in zip(SEEDS, (0.2, 0.4, 0.6, 0.8))]
+        result = seed_summary(rows)
+        self.assertAlmostEqual(result["metrics"]["clip_metrics.f1"]["mean"], 0.5)
+        self.assertAlmostEqual(result["metrics"]["clip_metrics.f1"]["sample_std"], 0.2581988897471611)
+        self.assertIsNone(result["metrics"]["clip_metrics.roc_auc"]["mean"])
+        for bad in (rows[:-1], rows + [rows[0]], [{**row, "protocol": {}} if index == 1 else row for index, row in enumerate(rows)]):
+            with self.assertRaises(ValueError):
+                seed_summary(bad)
+
+    def test_seed_evaluation_plans_use_validation_before_frozen_test(self):
+        args = parser_for_runs().parse_args(["--manifest", "data/split.csv", "--evaluate"])
+        for seed in SEEDS:
+            calibration, testing = evaluation_commands(args, seed)
+            self.assertEqual(calibration[3], "calibrate")
+            self.assertEqual(testing[3], "evaluate")
+            self.assertEqual(testing[testing.index("--config") + 1], calibration[calibration.index("--output") + 1])
+            self.assertIn("seed" + str(seed), testing[testing.index("--checkpoint") + 1])
+        args.manifest = "../runtime/mwsc/experiments/seed42/test.json"
+        with self.assertRaisesRegex(ValueError, "overwrite"):
+            evaluation_commands(args, 42)
+
     def test_single_process_preserves_model_and_dataset(self):
         with patch.dict(os.environ, {"WORLD_SIZE": "1", "RANK": "0", "LOCAL_RANK": "0"}):
             context = ParallelContext("cpu")

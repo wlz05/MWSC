@@ -5,9 +5,11 @@ from dataclasses import replace
 import json
 import os
 import subprocess
+import zipfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from pathlib import Path
 import numpy as np
 from config import Config
 from core.align import align_features, interpolate_features, validate_times, AlignmentError
@@ -18,11 +20,11 @@ from dataset.speech import import_speech, audit_media
 from engine.sync import estimate_offset, shifted_clip, evaluate_sync
 from engine.stream import StreamSession
 from core.threshold import DynamicThreshold
-from core.audio import mono_resample
+from core.audio import mono_resample, preemphasize
 from dataset.split import connected_groups
 from dataset.provenance import partitions, signature
 from engine.evaluate import evaluate_row, evaluate, calibrate
-from engine.detect import Detector
+from engine.detect import Detector, load_features
 from support.storage import atomic_json, relative_path, read_csv, write_csv, numpy_save
 from support.metrics import binary_metrics
 from model.weights import read_checkpoint, export_encoders, save_checkpoint
@@ -170,6 +172,51 @@ class MediaRegressionTests(unittest.TestCase):
             self.assertEqual(report["failed"], 1)
 
 class BoundaryTests(unittest.TestCase):
+    def test_corrupt_npz_members_raise_a_recoverable_decode_error(self):
+        with TemporaryWorkspace() as root:
+            path = root / "features.npz"
+            np.savez(path, video=np.ones((8, 2)), audio=np.ones((8, 2)), video_times=np.arange(8), audio_times=np.arange(8), config=np.asarray(json.dumps(Config().to_dict())), version=np.asarray(1), model_id=np.asarray("test"))
+            with zipfile.ZipFile(path) as archive:
+                info = archive.getinfo("video.npy")
+                offset = info.header_offset + 30 + len(info.filename.encode("ascii")) + len(info.extra) + info.compress_size - 1
+            data = bytearray(path.read_bytes())
+            data[offset] ^= 1
+            path.write_bytes(data)
+            with self.assertRaisesRegex(ValueError, "decoded"):
+                load_features(path)
+
+    def test_audio_rejects_complex_or_nonnumeric_samples(self):
+        for values in (np.array([1 + 2j, 3j]), np.array(["1", "2"]), np.array([True, False])):
+            for operation in (lambda x: mono_resample(x, 16000, 16000), preemphasize):
+                with self.subTest(values=values), self.assertRaises(ValueError):
+                    operation(values)
+
+    def test_audio_conversion_and_preemphasis_reject_overflow(self):
+        with self.assertRaises(ValueError), np.errstate(all="ignore"):
+            mono_resample(np.array([1e100, -1e100]), 16000, 16000)
+        with self.assertRaises(ValueError), np.errstate(all="ignore"):
+            preemphasize(np.array([1e308, -1e308]))
+
+    def test_failed_second_export_preserves_both_encoders(self):
+        with TemporaryWorkspace() as root:
+            checkpoint, video, audio = root / "model.pt", root / "video.ts", root / "audio.ts"
+            for target in (checkpoint, video, audio):
+                target.write_bytes(b"previous")
+            scripts = [Mock(side_effect=lambda x: x), Mock(side_effect=lambda x: x)]
+            scripts[0].save.side_effect = lambda path: Path(path).write_bytes(b"new video")
+            def fail(path):
+                Path(path).write_bytes(b"incomplete audio")
+                raise OSError("Export interrupted")
+            scripts[1].save.side_effect = fail
+            model = SimpleNamespace(video=torch.nn.Identity(), audio=torch.nn.Identity())
+            config = replace(Config(), image_size=32, feature_dim=8)
+            with patch("model.weights.load_encoders", return_value=(model, config, {"provenance": "test"})), patch("model.weights.torch.jit.trace", side_effect=scripts):
+                with self.assertRaisesRegex(OSError, "interrupted"):
+                    export_encoders(checkpoint, video, audio)
+            for target in (checkpoint, video, audio):
+                self.assertEqual(target.read_bytes(), b"previous")
+            self.assertEqual(set(root.iterdir()), {checkpoint, video, audio})
+
     def test_sync_offsets_accept_arrays_and_single_use_generators(self):
         rows = validate_rows([self.row(sync_label=0, offset_seconds=0)])
         clip = SimpleNamespace(start=0, end=2, sample_rate=16000)
@@ -305,7 +352,7 @@ class BoundaryTests(unittest.TestCase):
         self.assertAlmostEqual(float(normalized.sum()), 1)
 
     def test_invalid_path_types_are_rejected(self):
-        for value in (None, True, 123, b"data/file", " ", "bad\x00path"):
+        for value in (None, True, 123, b"data/file", " ", "bad\x00path", "".join(("/", "outside")), "".join(("\\", "outside"))):
             with self.assertRaises(ValueError):
                 relative_path(value)
 

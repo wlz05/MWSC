@@ -10,6 +10,8 @@ def mono_resample(waveform, source_rate, target_rate):
     if any(isinstance(rate, bool) or not isinstance(rate, Integral) or rate <= 0 for rate in (source_rate, target_rate)):
         raise ValueError("Audio sampling rates require positive integers")
     values = np.asarray(waveform)
+    if not np.issubdtype(values.dtype, np.number) or np.iscomplexobj(values):
+        raise ValueError("Audio samples must be real numbers")
     if values.ndim not in (1, 2) or not values.size:
         raise ValueError("Audio must have shape [samples] or [samples, channels]")
     if np.issubdtype(values.dtype, np.integer):
@@ -28,16 +30,24 @@ def mono_resample(waveform, source_rate, target_rate):
     if source_rate != target_rate:
         divisor = math.gcd(int(source_rate), int(target_rate))
         values = resample_poly(values, target_rate // divisor, source_rate // divisor)
+    if not np.isfinite(values).all() or np.any(np.abs(values) > np.finfo(np.float32).max):
+        raise ValueError("Audio exceeds the finite float32 range")
     return values.astype(np.float32)
 
 def preemphasize(waveform, coefficient=0.97):
     if not np.isfinite(coefficient) or not 0 <= coefficient < 1:
         raise ValueError("Invalid pre-emphasis coefficient")
-    values = np.asarray(waveform, dtype=np.float64)
+    values = np.asarray(waveform)
+    if not np.issubdtype(values.dtype, np.number) or np.iscomplexobj(values):
+        raise ValueError("Audio samples must be real numbers")
+    values = values.astype(np.float64)
     if values.ndim != 1 or not len(values) or not np.isfinite(values).all():
         raise ValueError("Invalid mono waveform")
     result = values.copy()
-    result[1:] -= coefficient * values[:-1]
+    with np.errstate(over="ignore", invalid="ignore"):
+        result[1:] -= coefficient * values[:-1]
+    if not np.isfinite(result).all():
+        raise ValueError("Pre-emphasis exceeds the finite numeric range")
     return result
 
 def stft_features(waveform, config):

@@ -281,10 +281,10 @@ Our experiment configuration uses **8 NVIDIA RTX 4090 GPUs** and training seeds 
 
 ```bash
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-python -B run.py --manifest ../runtime/mwsc/split.csv --devices 8 --seeds 42 52 3047 3407 --epochs 20 --batch-size 2 --workers 2
+python -B run.py --manifest ../runtime/mwsc/split.csv --devices 8 --seeds 42 52 3047 3407 --epochs 20 --batch-size 2 --workers 2 --evaluate
 ```
 
-Each seed uses all eight GPUs through one DDP process per GPU. Seeds run sequentially, with separate checkpoints:
+The default seed grid is **42, 52, 3047, 3407**. Each seed uses all eight GPUs through one DDP process per GPU. Seeds run sequentially, with separate checkpoints:
 
 ```text
 ../runtime/mwsc/experiments/
@@ -295,6 +295,14 @@ Each seed uses all eight GPUs through one DDP process per GPU. Seeds run sequent
 ```
 
 `--batch-size` and `--workers` are per process. Batch size 2 on eight devices gives a global batch size of 16; workers 2 creates 16 data-loading workers. Contrastive negatives are local to each rank. Validation samples are sharded without padding, and losses are reduced by sample count. Only rank zero writes the checkpoint.
+
+With `--evaluate`, each selected checkpoint is calibrated on real validation videos and evaluated on the fixed test partition. Every seed directory contains `calibration.json`, `test.json`, and `result.json`; `../runtime/mwsc/experiments/summary.json` stores the individual results in `byseed` and each metric's mean and sample standard deviation in `metrics`. The final mean is `(score42 + score52 + score3047 + score3407) / 4`, using four independent seed-level metrics with equal weight. Sample standard deviation uses denominator three. Predictions and windows are not pooled across seeds before metric calculation. Missing seed reports prevent aggregation, and a metric undefined for any seed remains undefined. The manifest hash, test video identities, and encoder configuration must match across seeds. Without `--evaluate`, the launcher performs training only.
+
+To evaluate an existing four-seed checkpoint set without retraining:
+
+```bash
+python -B run.py --manifest ../runtime/mwsc/split.csv --seeds 42 52 3047 3407 --evaluate-only
+```
 
 Preview the launch commands:
 

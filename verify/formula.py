@@ -10,6 +10,19 @@ from core.threshold import DynamicThreshold
 from verify.fixture import TemporaryWorkspace
 
 class WaveletTests(unittest.TestCase):
+    def test_coherence_is_stable_across_extreme_amplitudes(self):
+        left = np.array([[1 + 1j, 2 - 1j, 3j], [2, 1j, -3]])
+        right = np.array([[2j, 3, -1j], [1j, -2, 4]])
+        expected = scale_coherence(left, right)
+        for a, b in ((1e200, 1e-200), (1e-200, 1e200), (1e300, 1e300)):
+            with self.subTest(video_scale=a, audio_scale=b), np.errstate(all="raise"):
+                np.testing.assert_allclose(scale_coherence(left * a, right * b), expected)
+
+    def test_coherence_rejects_empty_scales_or_time_axes(self):
+        for shape in ((0, 8), (2, 0)):
+            with self.subTest(shape=shape), self.assertRaises(ValueError):
+                scale_coherence(np.ones(shape), np.ones(shape))
+
     def test_coherence_matches_complex_equation(self):
         video = np.array([[1 + 2j, 3 - 1j, 2j], [2, 1j, 3]])
         audio = np.array([[2j, 1 + 3j, 4], [1j, 2, -1]])
