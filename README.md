@@ -416,14 +416,6 @@ python -B main.py demo
 
 The tests cover signal equations, dataset splits, training/inference, synchronization offsets, pretrained model compatibility, and distributed data sharding.
 
-SyncNet results on the official 12.68-second example, using CPU inference:
-
-| Preprocessing | LSE-C | LSE-D | Audio lag |
-| --- | --- | --- | --- |
-| Precropped, 5-second windows | 10.0991 | 5.4506 | -120 ms |
-| Precropped, one full-video window | 10.0479 | 5.3519 | -120 ms |
-| Automatic Haar crop, first 3 seconds | 7.4379 | 6.2309 | -120 ms |
-
 Cropping and windowing define the scoring protocol. The face pipeline uses Haar detection, a supplied face box, or a precropped track. Each report records its preprocessing mode and model hash.
 
 ---
