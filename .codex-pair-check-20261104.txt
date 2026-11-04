@@ -1,0 +1,3 @@
+Owner-requested Codex co-author attribution test.
+This marker was prepared with Codex and has no runtime behavior.
+Remove this file after checking the merged pull request.
