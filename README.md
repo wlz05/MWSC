@@ -296,7 +296,7 @@ The default seed grid is **42, 52, 3047, 3407**. Each seed uses all eight GPUs t
 
 `--batch-size` and `--workers` are per process. Batch size 2 on eight devices gives a global batch size of 16; workers 2 creates 16 data-loading workers. Contrastive negatives are local to each rank. Validation samples are sharded without padding, and losses are reduced by sample count. Only rank zero writes the checkpoint.
 
-With `--evaluate`, each selected checkpoint is calibrated on real validation videos and evaluated on the fixed test partition. Every seed directory contains `calibration.json`, `test.json`, and `result.json`; `../runtime/mwsc/experiments/summary.json` stores the individual results in `byseed` and each metric's mean and sample standard deviation in `metrics`. The final mean is `(score42 + score52 + score3047 + score3407) / 4`, using four independent seed-level metrics with equal weight. Sample standard deviation uses denominator three. Predictions and windows are not pooled across seeds before metric calculation. Missing seed reports prevent aggregation, and a metric undefined for any seed remains undefined. The manifest hash, test video identities, and encoder configuration must match across seeds. Without `--evaluate`, the launcher performs training only.
+With `--evaluate`, each selected checkpoint is calibrated on real validation videos and evaluated on the fixed test partition. Every seed directory contains `calibration.json`, `test.json`, and `result.json`; `../runtime/mwsc/experiments/summary.json` stores the individual results in `byseed` and each metric's mean and sample standard deviation in `metrics`. The final mean is `(score42 + score52 + score3047 + score3407) / 4`, using four independent seed-level metrics with equal weight. Sample standard deviation uses denominator three. Predictions and windows are not pooled across seeds before metric calculation. Missing seed reports prevent aggregation, and a metric undefined for any seed remains undefined. Empty reports, nonnumeric metrics, and colliding metric paths are rejected before summary publication. The manifest hash, test video identities, and encoder configuration must match across seeds. Without `--evaluate`, the launcher performs training only.
 
 To evaluate an existing four-seed checkpoint set without retraining:
 
@@ -332,7 +332,7 @@ The dense variants retain temporal resolution. Start with batch size 1 per devic
 
 ### 4. Validation and Model Selection
 
-After each training epoch, compute validation contrastive loss in evaluation mode. Average loss by the number of examples and save the checkpoint with the lowest validation loss. DDP validation shards cover each validation example once. Checkpoints record the training/validation annotations, partition signature, seed, optimizer, and selected validation loss. Resume uses those same annotations and carries forward the selected loss and weights.
+After each training epoch, compute validation contrastive loss in evaluation mode. Average loss by the number of examples and save the checkpoint with the lowest validation loss. DDP validation shards cover each validation example once. Checkpoints record the training/validation annotations, partition signature, seed, optimizer, and selected validation loss. Resume requires the same training seed and annotations and carries forward the selected loss and weights. Pass the checkpoint's original seed with `--seed`; a missing or different recorded seed stops recovery before an epoch runs.
 
 The [AVH-Align training loop](https://github.com/bit-ml/AVH-Align/blob/main/train.py) likewise separates optimization and validation and selects by validation loss. For a cross-dataset comparison, train and select on the source benchmark, then retain the target benchmark's evaluation membership.
 
@@ -414,7 +414,7 @@ python -B check.py
 python -B main.py demo
 ```
 
-The tests cover signal equations, dataset splits, training/inference, synchronization offsets, pretrained model compatibility, and distributed data sharding.
+The tests cover signal equations, dataset splits, training/inference, synchronization offsets, pretrained model compatibility, distributed data sharding, seed-report validation, and recovery seed identity. JSON inputs reject duplicate fields, nonfinite numbers, and floating-point overflow; UTF-8 BOM input remains supported.
 
 Cropping and windowing define the scoring protocol. The face pipeline uses Haar detection, a supplied face box, or a precropped track. Each report records its preprocessing mode and model hash.
 

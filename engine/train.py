@@ -97,6 +97,8 @@ def train_parallel(rows, config, checkpoint, epochs, batch_size, learning_rate, 
         if not isinstance(payload.get("optimizer"), dict):
             raise ValueError("Resume requires an optimizer state")
         verify_resume(rows, payload)
+        if type(payload["training"].get("seed")) is not int or payload["training"]["seed"] != seed:
+            raise ValueError("Resume seed must match the checkpoint training seed")
         best_validation = payload['training'].get('validation_loss')
         if isinstance(best_validation, bool) or not isinstance(best_validation, (int, float)) or not math.isfinite(best_validation):
             raise ValueError('Resume requires a finite selected validation loss')

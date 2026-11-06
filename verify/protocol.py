@@ -22,7 +22,7 @@ def rows():
     return validate_rows([{'dataset': 'custom', 'video': 'data/' + split + '.mp4', 'label': 0, 'group': split, 'source': split, 'split': split} for split in ('train', 'val', 'test')])
 
 def metadata(values):
-    return {'training': {'partitions': partitions(values), 'partition_signature': signature(values)}}
+    return {'training': {'partitions': partitions(values), 'partition_signature': signature(values), 'seed': 42}}
 
 class ProtocolTests(unittest.TestCase):
     def test_avdeepfake_resolves_sdk_subset_paths_and_frame_duration(self):
@@ -125,6 +125,18 @@ class ProtocolTests(unittest.TestCase):
                 self.assertEqual(writer.call_count, int(primary))
                 self.assertEqual(context.barrier.call_count, 2)
                 context.close.assert_called_once()
+
+    def test_resume_rejects_missing_or_changed_training_seed(self):
+        values = rows()
+        config = replace(Config(), image_size=32, feature_dim=8)
+        for seed in (None, True, 52):
+            saved = metadata(values)
+            saved['optimizer'] = {}
+            saved['training'].update(seed=seed, validation_loss=0.1)
+            with self.subTest(seed=seed), patch('engine.train.read_checkpoint', return_value=(saved, config)), \
+                    patch('engine.train.run_epoch') as epoch, self.assertRaisesRegex(ValueError, 'seed'):
+                train(values, config, 'weights/model.pt', epochs=1, device='cpu', resume='weights/resume.pt')
+            epoch.assert_not_called()
 
     def test_resume_preserves_a_better_selected_checkpoint_at_a_new_path(self):
         values = rows()

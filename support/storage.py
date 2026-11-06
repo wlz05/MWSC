@@ -3,6 +3,7 @@
 
 import csv
 import json
+import math
 import ntpath
 import os
 from pathlib import Path
@@ -49,8 +50,20 @@ def atomic_json(path, payload):
             os.unlink(name)
 
 def read_json(path):
+    def finite_number(value):
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("JSON numbers must be finite")
+        return number
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate JSON field: " + key)
+            result[key] = value
+        return result
     with relative_path(path, True).open(encoding="utf-8-sig") as stream:
-        return json.load(stream)
+        return json.load(stream, object_pairs_hook=unique_object, parse_float=finite_number, parse_constant=finite_number)
 
 def read_csv(path):
     with relative_path(path, True).open(newline="", encoding="utf-8-sig") as stream:

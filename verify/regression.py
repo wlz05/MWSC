@@ -25,7 +25,7 @@ from dataset.split import connected_groups
 from dataset.provenance import partitions, signature
 from engine.evaluate import evaluate_row, evaluate, calibrate
 from engine.detect import Detector, load_features
-from support.storage import atomic_json, relative_path, read_csv, write_csv, numpy_save
+from support.storage import atomic_json, relative_path, read_csv, write_csv, numpy_save, read_json
 from support.metrics import binary_metrics
 from model.weights import read_checkpoint, export_encoders, save_checkpoint
 from engine.loss import temporal_contrastive_loss
@@ -42,6 +42,18 @@ def checkpoint_metadata():
     return {'training': {'partitions': partitions(rows), 'partition_signature': signature(rows)}}
 
 class ConfigurationTests(unittest.TestCase):
+    def test_json_rejects_duplicates_and_nonfinite_numbers(self):
+        with TemporaryWorkspace() as root:
+            path = root / 'config.json'
+            for text in ('{"threshold":0.75,"threshold":0.1}', '{"nested":{"x":1,"x":2}}',
+                    '{"score":NaN}', '{"score":Infinity}', '{"score":-Infinity}', '{"score":1e999}'):
+                path.write_text(text, encoding='utf-8')
+                with self.subTest(text=text), self.assertRaises(ValueError):
+                    read_json(path)
+                self.assertEqual(path.read_text(encoding='utf-8'), text)
+            path.write_text('\ufeff{"score":0.25,"items":[null,1e-3]}', encoding='utf-8')
+            self.assertEqual(read_json(path), {'score': 0.25, 'items': [None, 0.001]})
+
     def test_fractional_integer_and_boolean_parameters_are_rejected(self):
         for parameters in ({"frequency_count": 2.5}, {"sample_rate": True}, {"gaussian_std": "1.5"}):
             with self.assertRaises(ValueError):

@@ -16,9 +16,11 @@ SEEDS = (42, 52, 3047, 3407)
 
 def seed_summary(records, seeds=SEEDS):
     seeds = list(seeds)
-    if not seeds or len(set(seeds)) != len(seeds) or any(type(seed) is not int or not 0 <= seed < 2 ** 32 for seed in seeds):
+    if not seeds or any(type(seed) is not int or not 0 <= seed < 2 ** 32 for seed in seeds) or len(set(seeds)) != len(seeds):
         raise ValueError("Seeds must be distinct unsigned 32-bit integers")
-    if any(not isinstance(row, dict) or type(row.get("seed")) is not int or "metrics" not in row or not isinstance(row.get("protocol"), dict) for row in records):
+    if not isinstance(records, (list, tuple)) or not records:
+        raise ValueError("Seed results must be a nonempty sequence")
+    if any(not isinstance(row, dict) or type(row.get("seed")) is not int or not isinstance(row.get("metrics"), dict) or not row["metrics"] or not isinstance(row.get("protocol"), dict) for row in records):
         raise ValueError("Every seed result needs metrics and an experiment protocol")
     if len(records) != len(seeds) or {row["seed"] for row in records} != set(seeds):
         raise ValueError("Missing or duplicate seed results; partial averages are forbidden")
@@ -28,14 +30,23 @@ def seed_summary(records, seeds=SEEDS):
         result = {}
         if isinstance(value, dict):
             for key, item in value.items():
-                result.update(flatten(item, prefix + ("." if prefix else "") + str(key)))
+                if not isinstance(key, str) or not key:
+                    raise ValueError("Metric names must be nonempty strings")
+                child = flatten(item, prefix + ("." if prefix else "") + key)
+                if result.keys() & child.keys():
+                    raise ValueError("Metric paths must be distinct")
+                result.update(child)
         elif value is None or isinstance(value, (int, float)) and not isinstance(value, bool):
             if value is not None and not math.isfinite(value):
                 raise ValueError("Seed metrics must be finite or explicitly undefined")
             result[prefix] = value
+        else:
+            raise ValueError("Seed metrics must be numeric or explicitly undefined")
         return result
     byseed = {str(row["seed"]): row["metrics"] for row in records}
     flat = {seed: flatten(byseed[str(seed)]) for seed in seeds}
+    if any(not value for value in flat.values()):
+        raise ValueError("Seed reports require at least one metric")
     metrics = {}
     for key in sorted(set().union(*(value.keys() for value in flat.values()))):
         values = [flat[seed].get(key) for seed in seeds]
@@ -81,7 +92,7 @@ def evaluate_seeds(args, environment, manifest_hash):
 def build_commands(args):
     if type(args.devices) is not int or not 1 <= args.devices <= 8:
         raise ValueError("Devices must be an integer from 1 to 8")
-    if not args.seeds or len(set(args.seeds)) != len(args.seeds) or any(type(seed) is not int or not 0 <= seed < 2 ** 32 for seed in args.seeds):
+    if not args.seeds or any(type(seed) is not int or not 0 <= seed < 2 ** 32 for seed in args.seeds) or len(set(args.seeds)) != len(args.seeds):
         raise ValueError("Seeds must be distinct unsigned 32-bit integers")
     if any(type(value) is not int for value in (args.epochs, args.batch_size, args.workers)) or args.epochs < 1 or args.batch_size < 1 or args.workers < 0:
         raise ValueError("Epochs and batch size must be positive integers; workers must be nonnegative")

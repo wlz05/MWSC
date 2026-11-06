@@ -22,6 +22,33 @@ class ParallelTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 seed_summary(bad)
 
+    def test_seed_reports_reject_invalid_metrics_and_colliding_paths(self):
+        invalid = ('invalid', {}, {'auc': 'invalid'}, {'auc': True}, {'auc': []},
+            {'auc': float('nan')}, {'auc': float('inf')}, {1: 0.5}, {'': 0.5},
+            {'a.b': 1.0, 'a': {'b': 2.0}}, {'empty': {}})
+        for metrics in invalid:
+            rows = [{'seed': seed, 'metrics': metrics, 'protocol': {}} for seed in SEEDS]
+            with self.subTest(metrics=metrics), self.assertRaises(ValueError):
+                seed_summary(rows)
+        for records in (None, {}, [], iter([])):
+            with self.subTest(records=records), self.assertRaises(ValueError):
+                seed_summary(records)
+        for seeds in ([[]], [True], [42, 42]):
+            with self.subTest(seeds=seeds), self.assertRaises(ValueError):
+                seed_summary([], seeds)
+        args = parser_for_runs().parse_args(['--manifest', 'data/split.csv'])
+        args.seeds = [[]]
+        with self.assertRaises(ValueError):
+            build_commands(args)
+
+    def test_missing_metric_stays_undefined_without_changing_seed_weights(self):
+        rows = [{'seed': seed, 'metrics': {'count': 2, 'auc': 0.5}, 'protocol': {}} for seed in SEEDS]
+        rows[-1]['metrics'].pop('auc')
+        result = seed_summary(rows)
+        self.assertIsNone(result['metrics']['auc']['mean'])
+        self.assertEqual(result['metrics']['auc']['undefined_seeds'], [3407])
+        self.assertEqual(result['metrics']['count']['mean'], 2)
+
     def test_seed_evaluation_plans_use_validation_before_frozen_test(self):
         args = parser_for_runs().parse_args(["--manifest", "data/split.csv", "--evaluate"])
         for seed in SEEDS:
