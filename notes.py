@@ -100,7 +100,7 @@ WORKFLOW = (
     "python -B main.py audit --manifest manifests/fakeavceleb_split.csv --check-files",
     "python -B main.py audit --manifest manifests/fakeavceleb_split.csv --decode --limit 20",
     "python -B main.py train --manifest manifests/fakeavceleb_split.csv --checkpoint weights/encoders.pt --epochs 20 --batch-size 2 --device auto",
-    "python -B run.py --manifest manifests/fakeavceleb_split.csv --devices 8 --seeds 42 52 3047 3407 --epochs 20 --batch-size 2 --workers 2",
+    "python -B run.py --manifest manifests/fakeavceleb_split.csv --devices 2 --seeds 42 52 3047 3407 --epochs 20 --batch-size 2 --workers 2",
     "python -B main.py calibrate --manifest manifests/fakeavceleb_split.csv --checkpoint weights/encoders.pt --output runs/calibration.json",
     "python -B main.py evaluate --manifest manifests/fakeavceleb_split.csv --checkpoint weights/encoders.pt --config runs/calibration.json --split test --output runs/test.json",
     "python -B main.py sync --manifest manifests/speech_split.csv --checkpoint weights/encoders.pt --offsets -0.3 0 0.3 --split test --output runs/sync.json",
