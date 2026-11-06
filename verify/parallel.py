@@ -3,6 +3,8 @@
 
 from dataclasses import replace
 import os
+from pathlib import Path
+import shlex
 import unittest
 from unittest.mock import patch
 import torch
@@ -115,6 +117,22 @@ class ParallelTests(unittest.TestCase):
             self.assertEqual(command[command.index("--nproc_per_node") + 1], "2")
             self.assertEqual(command[command.index("--seed") + 1], str(seed))
             self.assertIn("seed" + str(seed), command[command.index("--checkpoint") + 1])
+
+    def test_published_four_seed_examples_use_the_default_device_count(self):
+        from notes import WORKFLOW
+        parser = parser_for_runs()
+        default = parser.parse_args(["--manifest", "manifests/split.csv"])
+        examples = {"notes": WORKFLOW, "README": Path("README.md").read_text(encoding="utf-8").splitlines()}
+        for source, lines in examples.items():
+            commands = [shlex.split(line) for line in lines if line.startswith("python -B run.py ")]
+            self.assertTrue(commands, source)
+            for tokens in commands:
+                with self.subTest(source=source, command=tokens):
+                    args = parser.parse_args(tokens[3:])
+                    self.assertEqual(args.devices, default.devices)
+                    self.assertEqual(args.seeds, list(SEEDS))
+                    for command in build_commands(args):
+                        self.assertEqual(command[command.index("--nproc_per_node") + 1], str(default.devices))
 
     def test_device_override_preserves_the_extension_interface(self):
         parser = parser_for_runs()
