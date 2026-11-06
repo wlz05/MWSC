@@ -259,16 +259,19 @@ class ExpertTests(unittest.TestCase):
                 FaceReader()
 
     def test_predict_attachment_is_saved_with_mwsc_and_syncnet_scores(self):
-        with TemporaryWorkspace() as root:
-            args = parser_for_commands().parse_args(["predict", "--video", "data/video.mp4", "--checkpoint", "weights/mwsc.pt", "--lipsync", "--output", str(root / "result.json")])
-            detector = SimpleNamespace(predict=lambda *args: {"decision": "real", "scores": {"mwsc_mean": 0.9}})
-            with patch("main.make_detector", return_value=detector), patch("engine.lipsync.LipSyncScorer") as mocked:
-                mocked.return_value.predict.return_value = {"status": "scored", "lse_c": 7.5, "lse_d": 5.2}
-                result = run(args)
-            saved = json.loads((root / "result.json").read_text(encoding="utf-8"))
-            self.assertEqual(result, saved)
-            self.assertEqual(saved["scores"]["mwsc_mean"], 0.9)
-            self.assertEqual(saved["lip_sync"]["lse_c"], 7.5)
+        for explain in (False, True):
+            with self.subTest(explain=explain), TemporaryWorkspace() as root:
+                options = ["predict", "--video", "data/video.mp4", "--checkpoint", "weights/mwsc.pt", "--lipsync", "--output", str(root / "result.json")]
+                args = parser_for_commands().parse_args(options + (["--explain"] if explain else []))
+                with patch("main.make_detector") as factory, patch("engine.lipsync.LipSyncScorer") as mocked:
+                    factory.return_value.predict.return_value = {"decision": "real", "scores": {"mwsc_mean": 0.9}}
+                    mocked.return_value.predict.return_value = {"status": "scored", "lse_c": 7.5, "lse_d": 5.2}
+                    result = run(args)
+                    self.assertEqual(factory.return_value.predict.call_args.kwargs, {"explain": explain})
+                saved = json.loads((root / "result.json").read_text(encoding="utf-8"))
+                self.assertEqual(result, saved)
+                self.assertEqual(saved["scores"]["mwsc_mean"], 0.9)
+                self.assertEqual(saved["lip_sync"]["lse_c"], 7.5)
 
     def test_legacy_batch_counters_are_the_only_optional_checkpoint_fields(self):
         with TemporaryWorkspace() as root:

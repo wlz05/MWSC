@@ -21,7 +21,7 @@ flowchart TD
     ME --> MA["Timestamp-constrained DTW<br/>and interpolation"]
     MA --> MW["PCA, Morlet CWT<br/>and scale coherence"]
     MW --> MF["Gaussian fusion"]
-    MF --> MD["MSSC and decision"]
+    MF --> MD["MSSC, decision<br/>and scale contributions"]
     S --> SP["Color face tracks + MFCC"]
     SP --> SE["Pretrained audiovisual embeddings"]
     SE --> SO["Offset search"]
@@ -33,10 +33,123 @@ flowchart TD
 - Dense audiovisual encoders preserve temporal resolution. The compact architecture is the default; dense I3D and VGGish variants are also available.
 - Timestamp-constrained DTW corrects sampling differences without warping away content mismatch.
 - Morlet wavelets measure coherence at eight frequencies between 0.5 and 4 Hz.
-- Gaussian-weighted coherence produces MSSC. Detection supports frozen thresholds and stream-specific adaptive thresholds.
+- Gaussian-weighted coherence produces MSSC and per-frequency score contributions. `--explain` adds signed time-frequency terms that sum back to the same score. Detection supports frozen thresholds and stream-specific adaptive thresholds.
 - SyncNet v2 provides an independent lip-sync score using its official pretrained weights.
 
 ---
+
+## MWSC Equations and Code
+
+MWSC represents agreement as a spectrum over physical motion frequencies. Dense learned features supply the observations; timestamp alignment preserves the measured timeline; the wavelet stage separates frequency-specific agreement before Gaussian fusion. Reports retain the scale contributions and boundary support of that decision. SyncNet supplies its independent embedding-distance and offset measurements.
+
+### 1. Physical-Time Alignment and Principal Sequences
+
+For timestamps $t_i^v$ and $t_j^a$, pairs outside the 0.05-second tolerance have infinite cost. The dynamic program in [core/align.py](core/align.py) computes
+
+```math
+D_{ij}=|t_i^v-t_j^a|+\min(D_{i-1,j-1},D_{i-1,j},D_{i,j-1}),
+\qquad |t_i^v-t_j^a|\le 0.05.
+```
+
+Both dense streams are interpolated onto the supported 30Hz timeline. For each aligned feature matrix $H$, [first_component](core/wavelet.py) centers the features, chooses the first right singular vector, and standardizes its temporal projection:
+
+```math
+H_c=H-\bar H,\qquad H_c=U\Sigma R^T,\qquad
+z=H_c r_1,\qquad x=z/\mathrm{std}_0(z).
+```
+
+The largest absolute loading fixes the component sign. Constant or nonfinite sequences are rejected before scoring.
+
+### 2. Morlet Scales and Complex Coherence
+
+The implementation uses eight frequencies from 0.5 to 4Hz, $F_s=30$Hz, and $\omega_0=6$. The corrected Morlet kernel and implemented sample-domain scales are
+
+```math
+\psi(u)=\pi^{-1/4}e^{-u^2/2}\left(e^{i\omega_0u}-e^{-\omega_0^2/2}\right),
+\qquad s_j=\frac{\omega_0 F_s}{2\pi f_j}.
+```
+
+[morlet_cwt](core/wavelet.py) reflects each sequence at its boundaries and evaluates the discrete correlation through FFT convolution, using kernel radius $\lceil4s_j\rceil$:
+
+```math
+W_x(t,s_j)=\frac{1}{\sqrt{s_j}}\sum_n x[n]\,\overline{\psi((n-t)/s_j)}.
+```
+
+Let $E_j^v=\sum_t|W_v(t,s_j)|^2$ and define $E_j^a$ similarly. [scale_coherence](core/wavelet.py) sums complex cross-products before taking the squared magnitude:
+
+```math
+\rho_j=\frac{\sum_t W_v(t,s_j)\overline{W_a(t,s_j)}}{\sqrt{E_j^v E_j^a}},
+\qquad C_j=|\rho_j|^2\in[0,1].
+```
+
+Time-varying phase disagreement cancels inside the complex sum. A constant phase rotation leaves $C_j$ unchanged. The reported phase is $\arg\rho_j$; a numerically zero resultant has no defined phase. These phase statistics accompany the independent SyncNet lag estimate. The [wavelet guide](https://paos.colorado.edu/research/wavelets/bams_79_01_0061.pdf) and [cross-wavelet analysis](https://npg.copernicus.org/articles/11/561/2004/npg-11-561-2004.pdf) explain complex products, phase, and boundary effects. MWSC uses the window-aggregated formula above.
+
+### 3. Gaussian Fusion and Exact Score Contributions
+
+[gaussian_weights](core/wavelet.py) evaluates the frequency weights with $\mu=4$Hz and $\sigma=1.5$Hz:
+
+```math
+w_j=\frac{e^{-(f_j-\mu)^2/(2\sigma^2)}}{\sigma\sqrt{2\pi}},\qquad
+m_j=w_jC_j,\qquad
+\mathrm{MSSC}=\sum_jm_j,\qquad
+\widehat M=\frac{\mathrm{MSSC}}{\sum_jw_j}.
+```
+
+The raw score lies between zero and the discrete weight sum; the normalized score lies in $[0,1]$. Every score includes `scale_contributions` and `normalized_synchronization_score`. Normalized weight mode divides the Gaussian weights by their sum before fusion.
+
+For explanations, define the normalized cross-product at each observed time and allocate its agreement with the full-window resultant:
+
+```math
+q_j(t)=\frac{W_v(t,s_j)\overline{W_a(t,s_j)}}{\sqrt{E_j^v E_j^a}},\qquad
+\rho_j=\sum_tq_j(t),\qquad
+e_j(t)=w_j\Re\left(q_j(t)\overline{\rho_j}\right).
+```
+
+The conservation identities follow directly from the same complex sum:
+
+```math
+\sum_t e_j(t)=w_j\Re(\rho_j\overline{\rho_j})=m_j,
+\qquad\sum_{j,t}e_j(t)=\mathrm{MSSC}.
+```
+
+[coherence_evidence](core/wavelet.py) implements these signed contributions with the scorer's floating-point clipping convention. Positive terms reinforce the observed agreement; negative terms oppose it. The terms are score contributions rather than probabilities. `--explain` adds the full frequency-by-time matrix, its temporal sum, complex phases, and reconstruction error. [score_features](engine/detect.py) attaches the physical `time_seconds` grid. The `interior_support_mask` marks samples at least $\sqrt{2}s_j$ from both boundaries. It describes support without changing the scored window.
+
+```bash
+python -B main.py demo --explain
+python -B main.py score --features ../runtime/mwsc/features.npz --no-update --explain --output ../runtime/mwsc/explained.json
+python -B main.py predict --video ../videos/person.mp4 --checkpoint ../runtime/mwsc/experiments/seed42/encoders.pt --no-update --explain --output ../runtime/mwsc/prediction.json
+```
+
+The full matrix is exported only with `--explain`; normal reports retain the compact per-scale contributions. Explanation leaves the score, decision, and threshold update rule unchanged.
+
+### 4. Training Objective and Decision Rule
+
+[engine/loss.py](engine/loss.py) trains the encoders on real pairs with normalized similarities $Z_{ij}=\langle\bar v_i,\bar a_j\rangle/0.1$. For flattened positions $i=b_iT+t_i$, nearby off-diagonal positions from the same clip, within four frames, are masked. With matching-position targets $y_i=i$, define
+
+```math
+\widetilde Z_{ij}=\begin{cases}
+-10000,&b_i=b_j,\quad 0<|t_i-t_j|\le4,\\
+Z_{ij},&\mathrm{otherwise}.
+\end{cases}
+```
+
+The exact objective is
+
+```math
+\mathcal L=\frac{\mathrm{CE}(\widetilde Z,y)+\mathrm{CE}(\widetilde Z^T,y)}{2}
++1-\frac{1}{BT}\sum_i\langle\bar v_i,\bar a_i\rangle
++\frac{1}{2D}\sum_{m\in\{v,a\}}\sum_d\max(0,0.5-s_d^m),
+\qquad s_d^m=\sqrt{\mathrm{Var}_{b,t}(H_d^m)+10^{-4}}.
+```
+
+The real-only training and validation-selection protocol is related to [AVH-Align](https://openaccess.thecvf.com/content/CVPR2025/papers/Smeu_Circumventing_Shortcuts_in_Audio-visual_Deepfake_Detection_Datasets_with_Unsupervised_Learning_CVPR_2025_paper.pdf). MWSC's final decision uses its Gaussian-weighted wavelet score. [core/threshold.py](core/threshold.py) classifies a segment as fake when $\mathrm{MSSC}<T$. Accepted real scores enter history $H$, and the next adaptive threshold is
+
+```math
+T^*=\mathrm{mean}(H)-2\,\mathrm{std}_0(H),\qquad
+T_{\mathrm{next}}=0.9T+0.1T^*.
+```
+
+Equality is real. `--no-update` freezes history and threshold; evaluation resets state between videos. A video is fake when any valid segment is fake and real only when every requested segment is valid and real.
 
 ## Project Structure
 
@@ -109,7 +222,7 @@ python -B install.py --install --lipsync
 python -B main.py doctor
 ```
 
-Install the CUDA build of PyTorch for the training machine using the [official installation selector](https://pytorch.org/get-started/locally/). The eight-GPU training configuration uses Linux and NCCL.
+Install the CUDA build of PyTorch for the training machine using the [official installation selector](https://pytorch.org/get-started/locally/). The two-GPU training configuration uses Linux and NCCL.
 
 ---
 
@@ -265,26 +378,27 @@ Select real audiovisual pairs from `train`. Each epoch changes the training crop
 
 ### Experiment Configuration
 
-Our experiment configuration uses **8 NVIDIA RTX 4090 GPUs** and training seeds **42, 52, 3047, 3407**. Released partitions stay fixed across all four runs. Custom grouped experiments use split seed 42.
+Our experiment configuration uses **2 NVIDIA RTX 4090 GPUs, 24GB per GPU, and two 200GB SSDs**. The training seeds are **42, 52, 3047, 3407**. Released partitions stay fixed across all four runs. Custom grouped experiments use split seed 42.
 
 | Setting | Value |
 | --- | --- |
-| GPUs | 8 × NVIDIA RTX 4090 |
+| GPUs | 2 × NVIDIA RTX 4090, 24GB per GPU |
+| Storage | 2 × 200GB SSDs; data and runtime roots inspected separately |
 | Training seeds | 42, 52, 3047, 3407 |
 | Partition | Released metadata; seed 42 for custom grouped experiments |
 | Distributed training | One DDP process per GPU, NCCL |
 | Per-GPU batch size | 2 |
-| Global batch size | 16 |
+| Global batch size | 4 |
 | Learning rate | 0.0001 |
 | Optimizer | AdamW |
 | Epochs per seed | 20 |
 
 ```bash
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-python -B run.py --manifest ../runtime/mwsc/split.csv --devices 8 --seeds 42 52 3047 3407 --epochs 20 --batch-size 2 --workers 2 --evaluate
+export CUDA_VISIBLE_DEVICES=0,1
+python -B run.py --manifest ../runtime/mwsc/split.csv --devices 2 --seeds 42 52 3047 3407 --epochs 20 --batch-size 2 --workers 2 --evaluate
 ```
 
-The default seed grid is **42, 52, 3047, 3407**. Each seed uses all eight GPUs through one DDP process per GPU. Seeds run sequentially, with separate checkpoints:
+The default seed grid is **42, 52, 3047, 3407**. Each seed uses both GPUs through one DDP process per GPU. Seeds run sequentially, with separate checkpoints:
 
 ```text
 ../runtime/mwsc/experiments/
@@ -294,7 +408,7 @@ The default seed grid is **42, 52, 3047, 3407**. Each seed uses all eight GPUs t
 └── seed3407/encoders.pt
 ```
 
-`--batch-size` and `--workers` are per process. Batch size 2 on eight devices gives a global batch size of 16; workers 2 creates 16 data-loading workers. Contrastive negatives are local to each rank. Validation samples are sharded without padding, and losses are reduced by sample count. Only rank zero writes the checkpoint.
+`--batch-size` and `--workers` are per process. Batch size 2 on two devices gives a global batch size of 4; workers 2 creates four data-loading workers. Contrastive negatives are local to each rank. Validation samples are sharded without padding, and losses are reduced by sample count. Only rank zero writes the checkpoint.
 
 With `--evaluate`, each selected checkpoint is calibrated on real validation videos and evaluated on the fixed test partition. Every seed directory contains `calibration.json`, `test.json`, and `result.json`; `../runtime/mwsc/experiments/summary.json` stores the individual results in `byseed` and each metric's mean and sample standard deviation in `metrics`. The final mean is `(score42 + score52 + score3047 + score3407) / 4`, using four independent seed-level metrics with equal weight. Sample standard deviation uses denominator three. Predictions and windows are not pooled across seeds before metric calculation. Missing seed reports prevent aggregation, and a metric undefined for any seed remains undefined. Empty reports, nonnumeric metrics, and colliding metric paths are rejected before summary publication. The manifest hash, test video identities, and encoder configuration must match across seeds. Without `--evaluate`, the launcher performs training only.
 
@@ -307,13 +421,13 @@ python -B run.py --manifest ../runtime/mwsc/split.csv --seeds 42 52 3047 3407 --
 Preview the launch commands:
 
 ```bash
-python -B run.py --manifest ../runtime/mwsc/split.csv --devices 8 --dry-run
+python -B run.py --manifest ../runtime/mwsc/split.csv --devices 2 --dry-run
 ```
 
 ### One Seed with torchrun
 
 ```bash
-torchrun --standalone --nproc-per-node=8 main.py train --manifest ../runtime/mwsc/split.csv --checkpoint ../runtime/mwsc/experiments/seed42/encoders.pt --seed 42 --epochs 20 --batch-size 2 --workers 2 --device cuda
+torchrun --standalone --nproc-per-node=2 main.py train --manifest ../runtime/mwsc/split.csv --checkpoint ../runtime/mwsc/experiments/seed42/encoders.pt --seed 42 --epochs 20 --batch-size 2 --workers 2 --device cuda
 ```
 
 ### Single GPU
@@ -325,7 +439,7 @@ python -B main.py train --manifest ../runtime/mwsc/split.csv --checkpoint ../run
 ### Dense I3D / VGGish
 
 ```bash
-python -B run.py --manifest ../runtime/mwsc/split.csv --devices 8 --architecture i3d_vggish --batch-size 1 --video-backbone ../weights/i3d.pt --audio-backbone ../weights/vggish.pt
+python -B run.py --manifest ../runtime/mwsc/split.csv --devices 2 --architecture i3d_vggish --batch-size 1 --video-backbone ../weights/i3d.pt --audio-backbone ../weights/vggish.pt
 ```
 
 The dense variants retain temporal resolution. Start with batch size 1 per device and measure memory use before increasing it. Resume a trained MWSC checkpoint through `main.py train --resume`.
@@ -340,7 +454,8 @@ The [AVH-Align training loop](https://github.com/bit-ml/AVH-Align/blob/main/trai
 
 | Argument | Default | Description |
 | --- | --- | --- |
-| `--devices` | `8` | Processes/devices per seed in `run.py` |
+| `--devices` | `2` | Processes/devices per seed in `run.py` |
+| `--minimum-free-gb` | `5` | Free-space reserve checked before each training/evaluation process |
 | `--seeds` | `42 52 3047 3407` | Training seeds in `run.py` |
 | `--epochs` | `20` | Epochs per seed in `run.py` |
 | `--batch-size` | `2` | Samples per process |
@@ -405,6 +520,19 @@ The controlled-offset interface crops unsupported edges and preserves authentici
 MSSC uses the raw Gaussian weights by default. Their sum is approximately 1.121, so MSSC can exceed 1. Normalized Gaussian weights are available through the configuration. Thresholds must be recalibrated when the scoring grid or weight mode changes.
 
 ---
+
+### SSD Layout and Runtime Checks
+
+The two SSDs provide 400GB of nominal capacity across two devices. Keep source videos, audio, and manifests on the data SSD; use the runtime SSD for checkpoints, extracted feature archives, threshold states, and reports. Retain relative paths in manifests and command arguments. `--checkpoint-root` routes experiment outputs, and `extract --output` selects the feature-archive destination.
+
+```bash
+python -B main.py doctor --data-root ../datasets --runtime-root ../runtime/mwsc --minimum-free-gb 5
+python -B run.py --manifest ../runtime/mwsc/split.csv --checkpoint-root ../runtime/mwsc/experiments --minimum-free-gb 5 --devices 2 --dry-run
+```
+
+`doctor` reports the configured two-4090/two-SSD profile separately from detected GPU names, actual filesystem capacities, and free space. It reports whether the two supplied roots belong to distinct filesystems. A missing root is inspected through its nearest existing parent and marked `exists=false`. Create the intended mount/directory layout before interpreting that root as an SSD. The launcher checks the checkpoint filesystem's reserve before every training, calibration, and testing process; `--minimum-free-gb` controls that reserve. Dataset sizes and extracted archives must fit the capacity reported for their actual filesystem.
+
+CUDA loaders use pinned host memory, and input copies request nonblocking transfer. Epoch workers restart so each worker receives the current crop epoch. Training remains FP32, with batch size 2 per GPU and rank-local contrastive negatives. Four seeds run sequentially, each using the same two-GPU allocation.
 
 ## Tests
 

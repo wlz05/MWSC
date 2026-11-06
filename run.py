@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from support.storage import relative_path, paths_match, protect_output, atomic_json, read_json
+from support.storage import relative_path, paths_match, protect_output, atomic_json, read_json, storage_status
 
 SEEDS = (42, 52, 3047, 3407)
 
@@ -76,6 +76,9 @@ def evaluate_seeds(args, environment, manifest_hash):
         if hashlib.sha256(relative_path(args.manifest, True).read_bytes()).hexdigest() != manifest_hash:
             raise ValueError("The manifest changed between training seeds")
         for command in evaluation_commands(args, seed):
+            status = storage_status(args.checkpoint_root, getattr(args, "minimum_free_gb", 5.0))
+            if not status["reserve_available"]:
+                raise OSError("Checkpoint storage is below the configured free-space reserve")
             subprocess.run(command, check=True, env=environment)
         report = read_json(root / "test.json")
         if hashlib.sha256(relative_path(args.manifest, True).read_bytes()).hexdigest() != manifest_hash:
@@ -102,6 +105,9 @@ def build_commands(args):
         raise ValueError("Maximum steps must be a positive integer")
     if args.image_size is not None and (type(args.image_size) is not int or args.image_size < 32):
         raise ValueError("Image size must be an integer of at least 32")
+    reserve = getattr(args, "minimum_free_gb", 5.0)
+    if isinstance(reserve, bool) or not isinstance(reserve, (int, float)) or not math.isfinite(reserve) or reserve < 0:
+        raise ValueError("Free-space reserve must be finite and nonnegative")
     manifest = relative_path(args.manifest)
     root = relative_path(args.checkpoint_root)
     for value in (args.config, args.video_backbone, args.audio_backbone):
@@ -121,11 +127,12 @@ def build_commands(args):
     return commands
 
 def parser_for_runs():
-    parser = argparse.ArgumentParser(description="Run four MWSC seeds with one distributed process per GPU")
+    parser = argparse.ArgumentParser(description="Run four MWSC seeds on two RTX 4090 GPUs by default")
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--checkpoint-root", default="../runtime/mwsc/experiments")
     parser.add_argument("--seeds", nargs="+", type=int, default=list(SEEDS))
-    parser.add_argument("--devices", type=int, default=8)
+    parser.add_argument("--devices", type=int, default=2)
+    parser.add_argument("--minimum-free-gb", type=float, default=5.0)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="cuda")
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=2)
@@ -161,6 +168,9 @@ def main():
             for seed, command in zip(args.seeds, commands):
                 if hashlib.sha256(relative_path(args.manifest, True).read_bytes()).hexdigest() != manifest_hash:
                     raise ValueError("The manifest changed between training seeds")
+                status = storage_status(args.checkpoint_root, args.minimum_free_gb)
+                if not status["reserve_available"]:
+                    raise OSError("Checkpoint storage is below the configured free-space reserve")
                 print("MWSC seed=" + str(seed), flush=True)
                 subprocess.run(command, check=True, env=environment)
         if args.evaluate or args.evaluate_only:

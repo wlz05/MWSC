@@ -19,9 +19,11 @@ def checkpoint_identity(path):
             digest.update(chunk)
     return digest.hexdigest()
 
-def score_features(video, audio, video_times, audio_times, config, threshold=None, update=True):
+def score_features(video, audio, video_times, audio_times, config, threshold=None, update=True, explain=False):
     aligned_video, aligned_audio, grid, diagnostics = align_features(video, audio, video_times, audio_times, config)
-    result = synchronization_score(aligned_video, aligned_audio, config)
+    result = synchronization_score(aligned_video, aligned_audio, config, explain=explain)
+    if explain:
+        result["explanation"]["time_seconds"] = grid.tolist()
     result["alignment"] = diagnostics
     result["feature_interval"] = [float(grid[0]), float(grid[-1])]
     if threshold is not None:
@@ -69,7 +71,7 @@ class Detector:
         self.extractor = NeuralExtractor(model, config)
         self.threshold = DynamicThreshold(config, stream_id, self.model_id)
 
-    def process_segment(self, clip, update=True):
+    def process_segment(self, clip, update=True, explain=False):
         try:
             clip.validate()
             start, end = float(clip.start), float(clip.end)
@@ -79,7 +81,7 @@ class Detector:
             return {"decision": "insufficient_evidence", "reason": str(error), "updated": False, "segment_start": None, "segment_end": None}
         try:
             features = self.extractor.extract(clip)
-            result = score_features(*features, self.config, self.threshold, update)
+            result = score_features(*features, self.config, self.threshold, update, explain=explain)
             result["warnings"].extend(clip.warnings)
         except (InsufficientEvidence, AlignmentError) as error:
             result = {"decision": "insufficient_evidence", "reason": str(error), "updated": False}
@@ -87,10 +89,10 @@ class Detector:
         result["segment_end"] = end
         return result
 
-    def predict(self, video_path, audio_path=None, start=0.0, duration=None, audio_offset=0.0, update=True):
+    def predict(self, video_path, audio_path=None, start=0.0, duration=None, audio_offset=0.0, update=True, explain=False):
         results = []
         for index, begin, end, segment, error in iter_windows(video_path, self.config, audio_path, start, duration, audio_offset):
-            result = self.process_segment(segment, update) if error is None else {"decision": "insufficient_evidence", "reason": error, "updated": False}
+            result = self.process_segment(segment, update, explain=explain) if error is None else {"decision": "insufficient_evidence", "reason": error, "updated": False}
             result["segment_index"] = index
             result["segment_start"] = begin
             result["segment_end"] = end

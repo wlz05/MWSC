@@ -30,6 +30,7 @@ class DynamicThreshold:
             scale = max(float(values.max()), 1.0)
             mean = float(np.mean(values / scale)) * scale
             std = float(np.std(values / scale, ddof=0)) * scale
+            # T* = mean(H)-k*std(H); T_next = alpha*T + (1-alpha)*T*.
             target = mean - self.config.tolerance_k * std
             after = self.config.ema_alpha * before + (1 - self.config.ema_alpha) * target
             if not math.isfinite(after):

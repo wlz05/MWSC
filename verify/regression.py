@@ -25,13 +25,13 @@ from dataset.split import connected_groups
 from dataset.provenance import partitions, signature
 from engine.evaluate import evaluate_row, evaluate, calibrate
 from engine.detect import Detector, load_features
-from support.storage import atomic_json, relative_path, read_csv, write_csv, numpy_save, read_json
+from support.storage import atomic_json, relative_path, read_csv, write_csv, numpy_save, read_json, storage_status
 from support.metrics import binary_metrics
 from model.weights import read_checkpoint, export_encoders, save_checkpoint
 from engine.loss import temporal_contrastive_loss
 import torch
 from dataset.samples import RealSegmentDataset
-from main import load_config, parser_for_commands, validate_outputs
+from main import load_config, parser_for_commands, validate_outputs, doctor, run as run_command
 from engine.train import train
 from dataset.adapter import import_avdeepfake
 from verify.fixture import TemporaryWorkspace, synthetic_media
@@ -42,6 +42,75 @@ def checkpoint_metadata():
     return {'training': {'partitions': partitions(rows), 'partition_signature': signature(rows)}}
 
 class ConfigurationTests(unittest.TestCase):
+    def test_storage_inspection_uses_relative_existing_parent_without_creating_files(self):
+        with TemporaryWorkspace() as root:
+            target = root/'missing'/'runtime'
+            usage = SimpleNamespace(total=200*10**9, free=7*10**9)
+            with patch('support.storage.shutil.disk_usage', return_value=usage):
+                report = storage_status(target, 5)
+                self.assertTrue(report['reserve_available'])
+                self.assertEqual(report['total_gb'], 200)
+                self.assertEqual(report['free_gb'], 7)
+                self.assertFalse(report['exists'])
+                self.assertEqual(report['inspected_path'], root.as_posix())
+                self.assertFalse(storage_status(target, 8)['reserve_available'])
+            self.assertFalse(target.exists())
+            file = root/'not-a-directory'
+            file.write_text('preserve', encoding='utf-8')
+            with self.assertRaises(ValueError):
+                storage_status(file)
+        for reserve in (-1, True, float('nan'), float('inf')):
+            with self.subTest(reserve=reserve), self.assertRaises(ValueError):
+                storage_status('runs', reserve)
+
+    def test_evaluation_stops_before_a_process_when_storage_reserve_is_exhausted(self):
+        import hashlib
+        import run as launcher
+        with TemporaryWorkspace() as root:
+            manifest = root/'split.csv'
+            manifest.write_text('fixture', encoding='ascii')
+            args = launcher.parser_for_runs().parse_args(['--manifest', str(manifest), '--checkpoint-root', str(root/'runs'), '--seeds', '42'])
+            fingerprint = hashlib.sha256(manifest.read_bytes()).hexdigest()
+            with patch('model.weights.read_checkpoint', return_value=({'training': {'seed': 42}}, Config())), \
+                    patch('run.storage_status', return_value={'reserve_available': False}), \
+                    patch('run.subprocess.run') as spawn, self.assertRaisesRegex(OSError, 'reserve'):
+                launcher.evaluate_seeds(args, {}, fingerprint)
+            spawn.assert_not_called()
+            self.assertFalse((root/'runs').exists())
+
+    def test_doctor_reports_dual_gpu_profile_and_distinct_storage_status(self):
+        with TemporaryWorkspace() as root, patch('torch.cuda.is_available', return_value=False), \
+                patch('check.inspect_source', return_value={'passed': True}):
+            report = doctor(root, root/'runtime', 0)
+        self.assertEqual(report['hardware_profile']['gpus'], 2)
+        self.assertEqual(report['hardware_profile']['ssd_count'], 2)
+        self.assertEqual(report['hardware_profile']['ssd_capacity_gb_each'], 200)
+        self.assertFalse(report['gpu']['available'])
+        self.assertFalse(report['storage']['distinct_filesystems'])
+
+    def test_explanation_cli_flags_and_cached_features_preserve_threshold_state(self):
+        from engine.detect import score_features, save_features
+        config = Config()
+        times = 5+np.arange(60)/30
+        rng = np.random.default_rng(42)
+        video = rng.normal(size=(60, 4))
+        audio = video.copy()
+        threshold = DynamicThreshold(config)
+        before = threshold.state_dict()
+        value = score_features(video, audio, times, times, config, threshold, False, explain=True)
+        self.assertEqual(threshold.state_dict(), before)
+        np.testing.assert_allclose(value['explanation']['time_seconds'], times)
+        parser = parser_for_commands()
+        self.assertTrue(parser.parse_args(['demo', '--explain']).explain)
+        self.assertTrue(parser.parse_args(['predict', '--video', 'video.mp4', '--checkpoint', 'model.pt', '--explain']).explain)
+        with TemporaryWorkspace() as root:
+            archive = root/'features.npz'
+            save_features(archive, (video, audio, times, times), config, 'test')
+            args = parser.parse_args(['score', '--features', str(archive), '--no-update', '--explain'])
+            result = run_command(args)
+            self.assertIn('explanation', result)
+            self.assertAlmostEqual(result['explanation']['reconstructed_score'], result['synchronization_score'])
+
     def test_json_rejects_duplicates_and_nonfinite_numbers(self):
         with TemporaryWorkspace() as root:
             path = root / 'config.json'

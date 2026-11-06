@@ -21,8 +21,13 @@ PATENT = {
 }
 FORMULAS = {
     "coherence": "C(s) = abs(sum_t(Wv(t,s) * conjugate(Wa(t,s))))**2 / (sum_t(abs(Wv(t,s))**2) * sum_t(abs(Wa(t,s))**2))",
-    "gaussian": "w(s) = exp(-(s-mu)**2/(2*sigma**2)) / (sigma*sqrt(2*pi))",
-    "fusion": "MSSC = sum_s(w(s) * C(s))",
+    "gaussian": "w_j = exp(-(f_j-mu)**2/(2*sigma**2)) / (sigma*sqrt(2*pi))",
+    "fusion": "MSSC = sum_j(w_j * C_j)",
+    "principal_sequence": "Xc = X - mean_t(X); x = Xc @ r1 / std_0(Xc @ r1)",
+    "morlet_scale": "s_j = omega0 * Fs / (2*pi*f_j)",
+    "time_frequency_evidence": "e_j(t) = w_j * Re(q_j(t) * conjugate(sum_u q_j(u)))",
+    "normalized_cross_product": "q_j(t) = Wv_j(t)*conjugate(Wa_j(t))/sqrt(Ev_j*Ea_j)",
+    "conservation": "sum_j sum_t e_j(t) = sum_j w_j*C_j = MSSC",
     "decision": "score < current_threshold means fake; equality means real",
     "update": "theta_next = alpha*theta_current + (1-alpha)*(mean(history)-k*std(history))",
 }
@@ -114,16 +119,16 @@ WORKFLOW = (
     "python -B check.py",
 )
 HARDWARE = (
-    "Experiment configuration: 8 NVIDIA RTX 4090 GPUs with 24 GB VRAM per device.",
+    "Experiment configuration: 2 NVIDIA RTX 4090 GPUs with 24 GB VRAM per device and two 200 GB SSDs.",
     "Training seeds: 42, 52, 3047, 3407; data split seed: 42.",
-    "Each seed uses eight DDP processes with NCCL on Linux, one process per GPU; seeds run sequentially.",
-    "The launcher defaults to batch size 2 and 2 loading workers per GPU, giving global batch size 16.",
+    "Each seed uses two DDP processes with NCCL on Linux, one process per GPU; seeds run sequentially.",
+    "The launcher defaults to batch size 2 and 2 loading workers per GPU, giving global batch size 4.",
     "The launcher uses AdamW at learning rate 0.0001 for 20 epochs per seed.",
     "Seed checkpoints are stored separately under ../runtime/mwsc/experiments/seedN/encoders.pt.",
     "SyncNet inference supports CPU and CUDA; fetch downloads and validates its official pretrained model.",
 )
 INTERFACES = {"deepfake_datasets": "dataset/adapter.py", "speech_datasets": "dataset/speech.py", "manifest_schema": "dataset/manifest.py", "split_and_leakage_audit": "dataset/split.py", "synchronization_offsets": "engine/sync.py", "lip_sync_scores": "engine/lipsync.py", "pretrained_syncnet": "model/expert.py", "official_model_download": "support/download.py", "distributed_training": "engine/parallel.py", "four_seed_launcher": "run.py", "offline_detection": "engine/detect.py", "packet_streaming": "engine/stream.py", "evaluation": "engine/evaluate.py", "format_rules": "check.py"}
-READINESS = {"implemented": ["Dense feature encoders and local pretraining", "Patent PCA/Morlet/coherence/EMA pipeline", "Bounded-window long-video inference", "Deepfake and speech dataset imports", "Media availability and source leakage audits", "Separate synchronization labels and controlled content shifts", "Offset-error and classification metrics", "Official pretrained SyncNet inference with LSE-C, LSE-D, and audio lag", "SyncNet score attachment to MWSC video reports", "Eight-GPU DDP training and four-seed launch commands"], "external_requirements": ["Authorized real dataset files", "Trained MWSC encoder weights", "PyAV or ffmpeg/ffprobe for embedded container audio", "Held-out calibration and real-data benchmark results"], "research_limits": ["Offset correlation is an additional diagnostic and not the patent coherence equation", "Official temporal-localization leaderboard evaluation requires its own prescribed protocol", "The patent's original weights, dataset, and reported AUC are unavailable for exact reproduction"]}
+READINESS = {"implemented": ["Dense feature encoders and local pretraining", "Patent PCA/Morlet/coherence/EMA pipeline", "Bounded-window long-video inference", "Deepfake and speech dataset imports", "Media availability and source leakage audits", "Separate synchronization labels and controlled content shifts", "Offset-error and classification metrics", "Official pretrained SyncNet inference with LSE-C, LSE-D, and audio lag", "SyncNet score attachment to MWSC video reports", "Two-GPU DDP training and four-seed launch commands"], "external_requirements": ["Authorized real dataset files", "Trained MWSC encoder weights", "PyAV or ffmpeg/ffprobe for embedded container audio", "Held-out calibration and real-data benchmark results"], "research_limits": ["Offset correlation is an additional diagnostic and not the patent coherence equation", "Official temporal-localization leaderboard evaluation requires its own prescribed protocol", "The patent's original weights, dataset, and reported AUC are unavailable for exact reproduction"]}
 
 def report():
     return {"project": PROJECT, "patent": PATENT, "formulas": FORMULAS, "claim_mapping": PATENT_MAPPING, "implementation_choices": IMPLEMENTATION_CHOICES, "limitations": LIMITATIONS, "workflow": WORKFLOW, "hardware": HARDWARE, "interfaces": INTERFACES, "readiness": READINESS}

@@ -5,11 +5,71 @@ from dataclasses import replace
 import unittest
 import numpy as np
 from config import Config
-from core.wavelet import first_component, morlet_cwt, scale_coherence, gaussian_weights, synchronization_score, InsufficientEvidence
+from core.wavelet import first_component, morlet_cwt, scale_coherence, gaussian_weights, synchronization_score, coherence_evidence, InsufficientEvidence
 from core.threshold import DynamicThreshold
 from verify.fixture import TemporaryWorkspace
 
 class WaveletTests(unittest.TestCase):
+    def test_time_frequency_contributions_conserve_the_original_score(self):
+        rng = np.random.default_rng(3047)
+        left = rng.normal(size=(8, 60)) + 1j*rng.normal(size=(8, 60))
+        right = rng.normal(size=(8, 60)) + 1j*rng.normal(size=(8, 60))
+        for mode in ('patent_raw', 'normalized'):
+            weights = gaussian_weights(np.linspace(0.5, 4, 8), mode=mode)
+            expected = weights*scale_coherence(left, right)
+            for a, b in ((1., 1.), (1e200, 1e-200), (1e-200, 1e200)):
+                with self.subTest(mode=mode, a=a, b=b):
+                    result = coherence_evidence(left*a, right*b, weights)
+                    terms = np.asarray(result['time_frequency_contributions'])
+                    np.testing.assert_allclose(terms.sum(axis=1), expected, atol=1e-14)
+                    np.testing.assert_allclose(terms.sum(axis=0), result['time_contributions'], atol=1e-14)
+                    np.testing.assert_allclose(result['scale_contributions'], expected, atol=1e-14)
+                    self.assertAlmostEqual(result['reconstructed_score'], float(expected.sum()), places=14)
+                    self.assertLess(abs(result['conservation_error']), 1e-14)
+
+    def test_evidence_remains_finite_for_large_finite_weights(self):
+        with np.errstate(all='raise'):
+            result = coherence_evidence(np.ones((1, 60)), np.ones((1, 60)), [1e307])
+        self.assertTrue(np.isfinite(result['time_frequency_contributions']).all())
+        np.testing.assert_allclose(result['reconstructed_score'], 1e307, rtol=1e-14)
+
+    def test_signed_contributions_expose_cancellation(self):
+        result = coherence_evidence([[1., 1.]], [[1., -0.5]], [1.])
+        np.testing.assert_allclose(result['time_contributions'], [0.2, -0.1])
+        self.assertAlmostEqual(result['reconstructed_score'], 0.1)
+        zero = coherence_evidence([[1., 1.]], [[1., -1.]], [1.])
+        self.assertEqual(zero['cross_phase_rad'], [None])
+        self.assertEqual(zero['time_contributions'], [0., 0.])
+
+    def test_constant_cross_phase_has_a_defined_sign(self):
+        left = np.array([[1+2j, 3-1j, 2j]])
+        result = coherence_evidence(left, left*np.exp(0.7j), [1.])
+        self.assertAlmostEqual(result['cross_phase_rad'][0], -0.7)
+        self.assertAlmostEqual(result['scale_contributions'][0], 1.)
+
+    def test_explaining_preserves_scoring_and_reports_boundary_support(self):
+        rng = np.random.default_rng(52)
+        left, right = rng.normal(size=(60, 5)), rng.normal(size=(60, 4))
+        ordinary = synchronization_score(left, right, Config())
+        explained = synchronization_score(left, right, Config(), explain=True)
+        detail = explained.pop('explanation')
+        self.assertEqual(ordinary, explained)
+        self.assertAlmostEqual(sum(ordinary['scale_contributions']), ordinary['synchronization_score'])
+        self.assertAlmostEqual(detail['reconstructed_score'], ordinary['synchronization_score'])
+        mask = np.asarray(detail['interior_support_mask'])
+        self.assertEqual(mask.shape, (8, 60))
+        self.assertFalse(mask[0].any())
+        self.assertTrue(mask[-1].any())
+        with self.assertRaises(ValueError):
+            synchronization_score(left, right, Config(), explain=1)
+
+    def test_evidence_rejects_invalid_weights_and_empty_frequency_grid(self):
+        for weights in ([], [1., 2.], [-1.], [0.], [float('nan')], [float('inf')]):
+            with self.subTest(weights=weights), self.assertRaises(ValueError):
+                coherence_evidence([[1., 2.]], [[2., 1.]], weights)
+        with self.assertRaises(ValueError):
+            morlet_cwt(np.arange(8.), 30., [])
+
     def test_coherence_is_stable_across_extreme_amplitudes(self):
         left = np.array([[1 + 1j, 2 - 1j, 3j], [2, 1j, -3]])
         right = np.array([[2j, 3, -1j], [1j, -2, 4]])

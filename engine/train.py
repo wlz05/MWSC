@@ -41,7 +41,7 @@ def run_epoch(model, loader, device, optimizer=None, maximum_steps=None, paralle
         if maximum_steps is not None and count >= maximum_steps:
             break
         with torch.set_grad_enabled(training):
-            video, audio = model(batch["video"].to(device), batch["audio"].to(device))
+            video, audio = model(batch["video"].to(device, non_blocking=True), batch["audio"].to(device, non_blocking=True))
             video, audio = aligned_batch(video, audio, batch["samples"])
             loss, _ = temporal_contrastive_loss(video, audio)
             if not torch.isfinite(loss):
@@ -118,8 +118,9 @@ def train_parallel(rows, config, checkpoint, epochs, batch_size, learning_rate, 
     sampler = parallel.training_sampler(train_set, seed)
     validation_subset = parallel.validation_subset(validation_set)
     generator = torch.Generator().manual_seed(seed)
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=sampler is None, sampler=sampler, num_workers=workers, collate_fn=collate_segments, generator=generator)
-    validation_loader = DataLoader(validation_subset, batch_size=batch_size, shuffle=False, num_workers=workers, collate_fn=collate_segments)
+    pinned = target.type == "cuda"
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=sampler is None, sampler=sampler, num_workers=workers, collate_fn=collate_segments, generator=generator, pin_memory=pinned)
+    validation_loader = DataLoader(validation_subset, batch_size=batch_size, shuffle=False, num_workers=workers, collate_fn=collate_segments, pin_memory=pinned)
     distributed_model = parallel.wrap(model)
     history = []
     if resume and not paths_match(checkpoint, resume):

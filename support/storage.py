@@ -8,6 +8,7 @@ import ntpath
 import os
 from pathlib import Path
 import tempfile
+import shutil
 
 def relative_path(value, must_exist=False):
     if not isinstance(value, (str, os.PathLike)):
@@ -21,6 +22,24 @@ def relative_path(value, must_exist=False):
     if must_exist and not path.exists():
         raise FileNotFoundError(text)
     return path
+
+def storage_status(path, minimum_free_gb=5.0):
+    target = relative_path(path)
+    if isinstance(minimum_free_gb, bool) or not isinstance(minimum_free_gb, (int, float)) or not math.isfinite(minimum_free_gb) or minimum_free_gb < 0:
+        raise ValueError("Free-space reserve must be finite and nonnegative")
+    if target.exists() and not target.is_dir():
+        raise ValueError("Storage root must be a directory")
+    inspected = target
+    while not inspected.exists():
+        inspected = inspected.parent
+    if not inspected.is_dir():
+        raise ValueError("Storage parent must be a directory")
+    usage = shutil.disk_usage(inspected)
+    return {"path": target.as_posix(), "exists": target.exists(),
+        "inspected_path": inspected.as_posix(),
+        "filesystem_id": int(inspected.stat().st_dev), "total_gb": usage.total / 1e9,
+        "free_gb": usage.free / 1e9, "minimum_free_gb": float(minimum_free_gb),
+        "reserve_available": usage.free / 1e9 >= minimum_free_gb}
 
 def paths_match(first, second):
     left, right = Path(first).resolve(), Path(second).resolve()

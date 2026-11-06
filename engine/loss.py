@@ -19,6 +19,7 @@ def temporal_contrastive_loss(video, audio, temperature=0.1, exclusion_frames=4)
     batch, time, channels = video.shape
     video_norm = F.normalize(video, dim=-1).reshape(-1, channels)
     audio_norm = F.normalize(audio, dim=-1).reshape(-1, channels)
+    # s(i,j) = <normalize(v_i), normalize(a_j)> / temperature.
     logits = video_norm @ audio_norm.T / temperature
     positions = torch.arange(batch * time, device=video.device)
     same_clip = positions[:, None] // time == positions[None, :] // time
@@ -33,6 +34,7 @@ def temporal_contrastive_loss(video, audio, temperature=0.1, exclusion_frames=4)
     video_std = torch.sqrt(video.var(dim=(0, 1), unbiased=False) + 1e-4)
     audio_std = torch.sqrt(audio.var(dim=(0, 1), unbiased=False) + 1e-4)
     variance = (F.relu(0.5 - video_std).mean() + F.relu(0.5 - audio_std).mean()) / 2
+    # L = (CE(s,i)+CE(s.T,i))/2 + (1-mean cos(v_i,a_i)) + L_var.
     total = contrastive + positive + variance
     return total, {"contrastive": float(contrastive.detach()), "positive": float(positive.detach()), "variance": float(variance.detach())}
 

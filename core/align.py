@@ -25,6 +25,7 @@ def timestamp_dtw(video_times, audio_times, tolerance=0.05):
     rows, columns = len(video), len(audio)
     if rows * columns > 4000000:
         raise AlignmentError("Apply DTW within short segments")
+    # D(i,j) = |tv_i-ta_j| + min(D(i-1,j-1), D(i-1,j), D(i,j-1)).
     cost = np.full((rows + 1, columns + 1), np.inf)
     parent = np.full((rows + 1, columns + 1), -1, dtype=np.int8)
     cost[0, 0] = 0.0

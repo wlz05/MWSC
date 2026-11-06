@@ -106,19 +106,27 @@ class ParallelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             context.training_sampler(TensorDataset(torch.arange(4)), 42)
 
-    def test_four_seed_launcher_builds_separate_eight_gpu_runs(self):
+    def test_four_seed_launcher_builds_separate_two_gpu_runs(self):
         args = parser_for_runs().parse_args(["--manifest", "manifests/split.csv", "--dry-run"])
         commands = build_commands(args)
         self.assertEqual(tuple(args.seeds), SEEDS)
         self.assertEqual(len(commands), 4)
         for seed, command in zip(SEEDS, commands):
-            self.assertEqual(command[command.index("--nproc_per_node") + 1], "8")
+            self.assertEqual(command[command.index("--nproc_per_node") + 1], "2")
             self.assertEqual(command[command.index("--seed") + 1], str(seed))
             self.assertIn("seed" + str(seed), command[command.index("--checkpoint") + 1])
 
+    def test_device_override_preserves_the_extension_interface(self):
+        parser = parser_for_runs()
+        for devices in (1, 2, 8):
+            args = parser.parse_args(['--manifest', 'data/split.csv', '--devices', str(devices)])
+            self.assertEqual(args.minimum_free_gb, 5.0)
+            for command in build_commands(args):
+                self.assertEqual(command[command.index('--nproc_per_node')+1], str(devices))
+
     def test_launcher_rejects_invalid_training_values_before_spawning(self):
         parser = parser_for_runs()
-        for tail in (["--epochs", "0"], ["--batch-size", "0"], ["--workers", "-1"], ["--learning-rate", "nan"], ["--learning-rate", "inf"], ["--maximum-steps", "0"], ["--image-size", "16"]):
+        for tail in (["--epochs", "0"], ["--batch-size", "0"], ["--workers", "-1"], ["--learning-rate", "nan"], ["--learning-rate", "inf"], ["--maximum-steps", "0"], ["--image-size", "16"], ["--minimum-free-gb", "nan"], ["--minimum-free-gb", "-1"]):
             with self.subTest(arguments=tail), self.assertRaises(ValueError):
                 build_commands(parser.parse_args(["--manifest", "data/split.csv", *tail]))
 

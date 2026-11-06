@@ -90,9 +90,13 @@ def parser_for_commands():
     parser = argparse.ArgumentParser(prog="MWSC", description=PROJECT["title"], epilog="Run from code/remain/MWSC. All paths are relative. Use notes for formulas, limitations, and examples.")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("notes", help="Print provenance, equations, and full workflow")
-    commands.add_parser("doctor", help="Inspect dependencies, GPU, and source format")
+    inspection = commands.add_parser("doctor", help="Inspect dependencies, GPU, SSD roots, and source format")
+    inspection.add_argument("--data-root", default="../datasets")
+    inspection.add_argument("--runtime-root", default="../runtime/mwsc")
+    inspection.add_argument("--minimum-free-gb", type=float, default=5.0)
     commands.add_parser("datasets", help="Print dataset recommendations and schema")
-    commands.add_parser("demo", help="Run synthetic feature equations without trained weights")
+    demonstration = commands.add_parser("demo", help="Run synthetic feature equations without trained weights")
+    demonstration.add_argument("--explain", action="store_true")
     commands.add_parser("test", help="Run local unit and integration tests")
     fetcher = commands.add_parser("fetch", help="Download and validate the official pretrained SyncNet v2 model")
     fetcher.add_argument("--syncnet-weights", default="../runtime/mwsc/syncnet.model")
@@ -176,6 +180,7 @@ def parser_for_commands():
     predictor.add_argument("--state", help="Optional threshold state, bound to the stream and model")
     predictor.add_argument("--no-update", action="store_true")
     predictor.add_argument("--output")
+    predictor.add_argument("--explain", action="store_true", help="Export signed time-frequency score contributions")
     predictor.add_argument("--lipsync", action="store_true", help="Attach pretrained SyncNet lip-sync scores")
     expert_options(predictor)
     extractor = commands.add_parser("extract", help="Save dense neural feature sequences for one segment")
@@ -187,6 +192,7 @@ def parser_for_commands():
     scorer.add_argument("--state")
     scorer.add_argument("--no-update", action="store_true")
     scorer.add_argument("--output")
+    scorer.add_argument("--explain", action="store_true", help="Export signed time-frequency score contributions")
     config_option(scorer)
     exporter = commands.add_parser("export", help="Export trained dense encoder modules to TorchScript")
     exporter.add_argument("--checkpoint", required=True)
@@ -194,7 +200,10 @@ def parser_for_commands():
     exporter.add_argument("--audio-output", required=True)
     return parser
 
-def doctor():
+def doctor(data_root="../datasets", runtime_root="../runtime/mwsc", minimum_free_gb=5.0):
+    from support.storage import storage_status
+    storage = {"data": storage_status(data_root, minimum_free_gb), "runtime": storage_status(runtime_root, minimum_free_gb)}
+    storage["distinct_filesystems"] = storage["data"]["filesystem_id"] != storage["runtime"]["filesystem_id"]
     from check import inspect_source
     dependencies = {name: importlib.util.find_spec(name) is not None for name in ("numpy", "scipy", "torch", "cv2", "av")}
     gpu = {"available": False}
@@ -208,9 +217,9 @@ def doctor():
         import cv2
         expert["opencv_version"] = cv2.__version__
         expert["automatic_faces_available"] = bool(getattr(cv2, "CascadeClassifier", None) or getattr(getattr(cv2, "xobjdetect", None), "CascadeClassifier", None) or getattr(cv2, "xobjdetect_CascadeClassifier", None))
-    return {"project": PROJECT, "python_version": sys.version.split()[0], "dependencies": dependencies, "ffmpeg_on_path": shutil.which("ffmpeg") is not None, "ffprobe_on_path": shutil.which("ffprobe") is not None, "gpu": gpu, "lip_sync": expert, "source": inspect_source(), "media_note": "Install PyAV, use ffmpeg with ffprobe, or supply a separate WAV with constant-rate video"}
+    return {"project": PROJECT, "python_version": sys.version.split()[0], "dependencies": dependencies, "ffmpeg_on_path": shutil.which("ffmpeg") is not None, "ffprobe_on_path": shutil.which("ffprobe") is not None, "gpu": gpu, "storage": storage, "hardware_profile": {"gpus": 2, "gpu_model": "RTX 4090", "gpu_memory_gb": 24, "ssd_count": 2, "ssd_capacity_gb_each": 200}, "lip_sync": expert, "source": inspect_source(), "media_note": "Install PyAV, use ffmpeg with ffprobe, or supply a separate WAV with constant-rate video"}
 
-def demo():
+def demo(explain=False):
     import numpy as np
     from engine.detect import score_features
     from core.threshold import DynamicThreshold
@@ -223,8 +232,8 @@ def demo():
     audio = np.column_stack((signal(at), 1.5 * signal(at)))
     rng = np.random.default_rng(42)
     unrelated = rng.normal(size=(len(at), 2))
-    matched = score_features(video, audio, vt, at, config, DynamicThreshold(config), False)
-    mismatched = score_features(video, unrelated, vt, at, config, DynamicThreshold(config), False)
+    matched = score_features(video, audio, vt, at, config, DynamicThreshold(config), False, explain=explain)
+    mismatched = score_features(video, unrelated, vt, at, config, DynamicThreshold(config), False, explain=explain)
     return {"synthetic_only": True, "trained_detector_accuracy": "not evaluated", "matched_features": matched, "unrelated_features": mismatched}
 
 def run(args):
@@ -239,12 +248,12 @@ def run(args):
         from notes import report
         return report()
     if args.command == "doctor":
-        return doctor()
+        return doctor(args.data_root, args.runtime_root, args.minimum_free_gb)
     if args.command == "datasets":
         from catalog import CATALOG, EXPERIMENTS
         return {"datasets": CATALOG, "experiments": EXPERIMENTS}
     if args.command == "demo":
-        return demo()
+        return demo(args.explain)
     if args.command == "test":
         import unittest
         modules = ("verify.partition", "verify.system", "verify.formula", "verify.accuracy", "verify.process", "verify.regression", "verify.expert", "verify.parallel", "verify.protocol", "verify.format")
@@ -331,7 +340,7 @@ def run(args):
         if args.command == "predict":
             if args.state and Path(args.state).exists():
                 detector.threshold.load(args.state)
-            result = detector.predict(args.video, args.audio, args.start, args.duration, args.audio_offset, not args.no_update)
+            result = detector.predict(args.video, args.audio, args.start, args.duration, args.audio_offset, not args.no_update, explain=args.explain)
             if args.lipsync:
                 from engine.lipsync import add_lipsync
                 result = add_lipsync(result, args.video, args.audio, **expert_arguments(args), start=args.start, duration=args.duration, audio_offset=args.audio_offset, window_seconds=args.sync_window)
@@ -364,7 +373,7 @@ def run(args):
         threshold = DynamicThreshold(config, args.stream_id, model_id)
         if args.state and Path(args.state).exists():
             threshold.load(args.state)
-        result = score_features(*features, config, threshold, not args.no_update)
+        result = score_features(*features, config, threshold, not args.no_update, explain=args.explain)
         if args.state and not args.no_update:
             threshold.save(args.state)
         if args.output:
@@ -381,7 +390,7 @@ def main():
     if not Path("config.py").is_file() or not Path("core/wavelet.py").is_file():
         parser.error("Change into the folder containing main.py before running commands")
     try:
-        for key in ("config", "video", "audio", "checkpoint", "manifest", "root", "identity_map", "output", "state", "features", "resume", "video_backbone", "audio_backbone", "video_output", "audio_output", "filelist", "audio_root", "syncnet_weights", "example_output"):
+        for key in ("config", "video", "audio", "checkpoint", "manifest", "root", "identity_map", "output", "state", "features", "resume", "video_backbone", "audio_backbone", "video_output", "audio_output", "filelist", "audio_root", "syncnet_weights", "example_output", "data_root", "runtime_root"):
             value = getattr(args, key, None)
             if value is not None:
                 relative_path(value)
