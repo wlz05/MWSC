@@ -62,7 +62,7 @@ The largest absolute loading fixes the component sign. Constant or nonfinite seq
 
 ### 2. Morlet Scales and Complex Coherence
 
-The implementation uses eight frequencies from 0.5 to 4Hz, $F_s=30$Hz, and $\omega_0=6$. The corrected Morlet kernel and implemented sample-domain scales are
+The implementation uses eight frequencies from 0.5 to 4Hz, $F_s=30$ Hz, and $\omega_0=6$. The corrected Morlet kernel and implemented sample-domain scales are
 
 ```math
 \psi(u)=\pi^{-1/4}e^{-u^2/2}\left(e^{i\omega_0u}-e^{-\omega_0^2/2}\right),
@@ -86,7 +86,7 @@ Time-varying phase disagreement cancels inside the complex sum. A constant phase
 
 ### 3. Gaussian Fusion and Exact Score Contributions
 
-[gaussian_weights](core/wavelet.py) evaluates the frequency weights with $\mu=4$Hz and $\sigma=1.5$Hz:
+[gaussian_weights](core/wavelet.py) evaluates the frequency weights with $\mu=4$ Hz and $\sigma=1.5$ Hz:
 
 ```math
 w_j=\frac{e^{-(f_j-\mu)^2/(2\sigma^2)}}{\sigma\sqrt{2\pi}},\qquad
