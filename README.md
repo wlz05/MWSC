@@ -6,26 +6,20 @@ MWSC detects temporal inconsistencies between speech and visual motion. Dense au
 
 ## Architecture
 
-```text
-Video + Audio
-     |
-     +-- MWSC
-     |    Grayscale frames + log-STFT
-     |              |
-     |    Dense video/audio encoders
-     |              |
-     |    Timestamp-constrained DTW + interpolation
-     |              |
-     |    PCA -> Morlet CWT -> scale coherence
-     |              |
-     |    Gaussian fusion -> MSSC -> decision
-     |
-     +-- SyncNet v2
-          Color face tracks + MFCC
-                    |
-          Pretrained audiovisual embeddings
-                    |
-          Offset search -> LSE-C / LSE-D / audio lag
+```mermaid
+flowchart TD
+    AV["Video + Audio"] --> M["MWSC"]
+    AV --> S["SyncNet v2"]
+    M --> MP["Grayscale frames + log-STFT"]
+    MP --> ME["Dense video/audio encoders"]
+    ME --> MA["Timestamp-constrained DTW<br/>and interpolation"]
+    MA --> MW["PCA, Morlet CWT<br/>and scale coherence"]
+    MW --> MF["Gaussian fusion"]
+    MF --> MD["MSSC and decision"]
+    S --> SP["Color face tracks + MFCC"]
+    SP --> SE["Pretrained audiovisual embeddings"]
+    SE --> SO["Offset search"]
+    SO --> SD["LSE-C, LSE-D and audio lag"]
 ```
 
 ### Main Components
