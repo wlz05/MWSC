@@ -7,6 +7,12 @@ MWSC detects temporal inconsistencies between speech and visual motion. Dense au
 ## Architecture
 
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 260
+    rankSpacing: 28
+---
 flowchart TD
     AV["Video + Audio"] --> M["MWSC"]
     AV --> S["SyncNet v2"]
